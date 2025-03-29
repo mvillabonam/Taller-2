@@ -20,4 +20,8 @@ train_personas <- train_personas |>
 dataset <- train_hogares |> 
   left_join(train_personas, by = c("id", "Clase", "Dominio", "Fex_c", "Fex_dpto", "Depto"))
 
-
+dataset |> 
+  select(starts_with("P")) |> 
+  mutate_all(as.factor) |> 
+  summary()
+  
