@@ -6,7 +6,7 @@
 library(pacman)
 
 pacman::p_load(
-  tidyverse, dyplr
+  tidyverse, dyplr, ggplot2
 )
 
 #-----------ESTABLECER DIRECTORIO--------------------------
