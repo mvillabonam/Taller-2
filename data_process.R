@@ -6,7 +6,7 @@
 library(pacman)
 
 pacman::p_load(
-  tidyverse, dyplr
+  tidyverse, dyplr, ggplot2
 )
 
 #-----------ESTABLECER DIRECTORIO--------------------------
@@ -101,3 +101,94 @@ OTHER_INCOME_DIC <- c( "P6610","P7040","P7495", "P7500s2",
 
 # ----> INCOME 
 
+# ----> Overcrowding (Hacinamiento)
+dataset <- dataset |>
+  mutate(hacinamiento = Nper / P5010)
+
+# ----> Housing Cost 
+
+# household costs by tenure type (P5090)
+dataset |>
+  group_by(P5090) |>
+  summarise(
+    pays_amortization = sum(!is.na(P5100)),
+    pays_rent = sum(!is.na(P5140)),
+    pays_imputed_rent = sum(!is.na(P5130)),
+    total_people = n()
+  )
+# We compare amortization vs imputed rent for some households (P5090 == 2)
+dataset |>
+  filter(P5090 == 2) |>
+  select(id, P5100, P5130) |>
+  mutate(mayor_gasto = ifelse(P5100 > P5130, "Amortización", "Imputed Rent")) |> 
+  count(mayor_gasto)
+dataset <- dataset |>
+  select(-mayor_gasto)
+
+# We assign rent (P5140) or imputed rent (P5130) based on P5090
+dataset <- dataset |>
+  mutate(costo_vivienda = ifelse(P5090 == 3, P5140, P5130))
+
+summary(dataset$costo_vivienda)
+
+# Winsorize extreme values
+lim_inf <- quantile(dataset$costo_vivienda, 0.01, na.rm = TRUE)
+lim_sup <- quantile(dataset$costo_vivienda, 0.99, na.rm = TRUE)
+
+ggplot(dataset, aes(y = costo_vivienda)) +
+  geom_boxplot(fill = "lightblue", alpha = 0.5) +
+  geom_hline(yintercept = lim_inf, color = "red", linetype = "dashed", size = 1) +
+  geom_hline(yintercept = lim_sup, color = "red", linetype = "dashed", size = 1) +
+  labs(title = "Boxplot with Winsorized Limits", y = "Housing cost") +
+  theme_minimal()
+
+dataset <- dataset |>
+  mutate(costo_vivienda = pmin(pmax(costo_vivienda, lim_inf), lim_sup))
+
+# Replace missing values (98, 99) with the median. Or reg?? 
+dataset |> count(costo_vivienda < 100)
+dataset <- dataset |>
+  mutate(costo_vivienda = ifelse(costo_vivienda %in% c(98, 99), median(costo_vivienda, na.rm = TRUE), costo_vivienda))
+
+
+# ----> Dependency ratio
+dataset <- dataset |>
+  group_by(id) |>
+  mutate(
+    ocupados = sum(Oc, na.rm = TRUE),
+    dependientes = sum(Ina, na.rm = TRUE) + 
+                   sum(Des, na.rm = TRUE) + 
+                   sum(ifelse(Pet == 0, 1, 0), na.rm = TRUE),
+    tasa_dependencia = ifelse(ocupados > 0, dependientes / ocupados, NA)
+  ) |>
+  ungroup()
+head(dataset)
+
+#Revisando si es viable imputar los NA
+max_tasa <- max(dataset$tasa_dependencia, na.rm = TRUE)
+print(max_tasa) 
+mediana_tasa <- median(dataset$tasa_dependencia, na.rm = TRUE)
+print(mediana_tasa)
+cantidad_na <- sum(is.na(dataset$tasa_dependencia))
+print(cantidad_na)
+
+# ----> Household education level
+dataset <- dataset |>
+  group_by(id) |>
+  mutate(
+    educacion_promedio_ = median(P6210, na.rm = TRUE),
+    max_educ_hogar = max(P6210, na.rm = TRUE) 
+  ) |>
+  ungroup()
+
+sum(is.na(dataset$median_education))
+hist(dataset$median_education)
+
+# ----> Household health security
+dataset <- dataset |>
+  group_by(id) |>
+  mutate(health_insurance_coverage = mean(P6090 == 1, na.rm = TRUE)) |>
+  ungroup()
+
+sum(is.na(dataset$average_education))
+hist(dataset$health_insurance_coverage, col = "lightgreen")
