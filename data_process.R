@@ -45,8 +45,15 @@ write_csv(summary, "1.Exploracion.csv")
 
 # ----> CREATE GROUP AGES 
 dataset <- dataset |> 
-  mutate(age_group = factor(age_group,
-                            levels = c("0-12", "12-18", "18-24", "24-55", "55+"),
+  mutate(age_group = case_when(
+    P6040 < 12 ~ "0-12",
+    P6040 >= 12 & P6040 < 18 ~ "12-18",
+    P6040 >= 18 & P6040 < 24 ~ "18-24",
+    P6040 >= 24 & P6040 < 65 ~ "24-65",
+    P6040 >= 65 ~ "65+"
+  )) |> 
+  mutate(age_group = factor(age_group, 
+                            levels = c("0-12", "12-18", "18-24", "24-65", "65+"), 
                             ordered = TRUE))
 # ----> P6090 y P6100: 
 SEGURIDAD_SOCIAL <- dataset|> 
@@ -60,36 +67,37 @@ SEGURIDAD_SOCIAL <- dataset|>
 dataset <- dataset |> 
   mutate(regimen_subsidiado = as.numeric(case_when(P6100 == 3 ~ 1, TRUE ~ 0))) ;rm(SEGURIDAD_SOCIAL)
 
+# ---> INFORMAL WORKER
+JOB_TYPE <- dataset |> 
+  group_by(age_group, P6430) |> 
+  summarise(count = sum(is.na(P6430)), .groups = "drop_last") |> 
+  ungroup() |> 
+  mutate(total = sum(count)) |> 
+  mutate(porcentaje = round(count / total, 2))
+write_csv(JOB_TYPE, "JOB_TYPE.csv"); rm(JOB_TYPE)
 
-# ----> P6630s1, P6630s2, P6630s3, P6630s4,P6630s6, P6800, P6870, P6920
+# -- 37% of the MISSING VALUES are between 18-65 AGE groups.
+dataset <- dataset %>%
+  mutate(
+    informal = case_when(
+      is.na(P6430) & is.na(regimen_subsidiado) ~ NA_real_,
+      P6430 %in% c(4, 5, 6, 8) & regimen_subsidiado == 1 ~ 1,
+      TRUE ~ 0
+    )
+  )
 
-# ----> DESCRIPCIÓN INGRESOS:
-LABOR_INCOME_F <- c("P6630s1", "P6630s2", "P6630s3", "P6630s4", 
-                   "P6630s6","P6510",
-                   "P7510s5","P7510s6","P7510s7")
+# ----> INCOME 
+LABOR_INCOME_DIC <- c("P6510","P6545","P6630s1","P6630s2","P6630s3",
+                      "P6630s4","P6630s6","P7510s7","P7510s5","P7510s6")
 
+LABOR_INCOME_IN_DIC <- c("P7422", "P7472","P6510")
 
-LABOR_INCOME_IN <- c("P7422", "P7472", "P6630s3", "P6630s4", 
-                    "P6630s6", "P6800", "P6870", "P6920","P6510",
-                    "P7510s5","P7510s6","P7510s7")
+SUBSIDIOS <- c("P6585s1","P6585s2","P6585s3","P6585s4","P6580","P6590", 
+               "P6600")
 
-OTHER_INCOME <- c("P7495", "P7500s2", "P7500s3", "P7505", 
-                     "P7510s5", "P7510s6", "P7510s7")
+OTHER_INCOME_DIC <- c( "P6610","P7040","P7495", "P7500s2",
+                      "P7500s3","P7505","P7510s1","P7510s2","P7510s3",
+                      "P7510s7") 
 
-OCUPIED_INCOME <- dataset |>
-  filter(age_group > "12-18",Oc==1) |>
-  group_by(P6920) |>
-  summarise(across(all_of(LABOR_INCOME_F),
-                   list(
-                     mean = ~mean(.x, na.rm = TRUE),
-                     naTotal = ~sum(is.na(.x)),
-                     naPercent = ~mean(is.na(.x)) * 100
-                   ),
-                   .names = "{.col}_{.fn}"),
-            .groups = "drop") |>
-  pivot_longer(-P6920,
-               names_to = c("variable", "stat"),
-               names_sep = "_",
-               values_to = "value") |>
-  pivot_wider(names_from = stat, values_from = value)
+# ----> INCOME 
 
