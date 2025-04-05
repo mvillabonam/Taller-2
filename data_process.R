@@ -109,9 +109,6 @@ train_dataset |>
   mutate(mayor_gasto = ifelse(P5100 > P5130, "Amortización", "Imputed Rent")) |> 
   count(mayor_gasto)
 
-train_dataset <- train_dataset |>
-  select(-mayor_gasto)
-
 # We assign rent (P5140) or imputed rent (P5130) based on P5090
 train_dataset <- train_dataset |>
   mutate(costo_vivienda = ifelse(P5090 == 3, P5140, P5130))
@@ -347,9 +344,6 @@ test_dataset |>
   select(id, P5100, P5130) |>
   mutate(mayor_gasto = ifelse(P5100 > P5130, "Amortización", "Imputed Rent")) |> 
   count(mayor_gasto)
-
-test_dataset <- test_dataset |>
-  select(-mayor_gasto)
 
 # We assign rent (P5140) or imputed rent (P5130) based on P5090
 test_dataset <- test_dataset |>
