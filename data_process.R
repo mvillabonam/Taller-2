@@ -139,11 +139,11 @@ train_dataset <- train_dataset |>
 train_dataset <- train_dataset |>
   group_by(id) |>
   mutate(
-    ocupados = sum(Oc, na.rm = TRUE),
-    dependientes = sum(Ina, na.rm = TRUE) + 
+    num_ocupados = sum(Oc, na.rm = TRUE),
+    num_dependientes = sum(Ina, na.rm = TRUE) + 
                    sum(Des, na.rm = TRUE) + 
                    sum(ifelse(Pet == 0, 1, 0), na.rm = TRUE),
-    tasa_dependencia = ifelse(ocupados > 0, dependientes / ocupados, NA)
+    tasa_dependencia = ifelse(num_ocupados > 0, num_dependientes / num_ocupados, NA)
   ) |>
   ungroup()
 head(train_dataset)
@@ -375,11 +375,11 @@ test_dataset <- test_dataset |>
 test_dataset <- test_dataset |>
   group_by(id) |>
   mutate(
-    ocupados = sum(Oc, na.rm = TRUE),
-    dependientes = sum(Ina, na.rm = TRUE) + 
+    num_ocupados = sum(Oc, na.rm = TRUE),
+    num_dependientes = sum(Ina, na.rm = TRUE) + 
       sum(Des, na.rm = TRUE) + 
       sum(ifelse(Pet == 0, 1, 0), na.rm = TRUE),
-    tasa_dependencia = ifelse(ocupados > 0, dependientes / ocupados, NA)
+    tasa_dependencia = ifelse(num_ocupados > 0, num_dependientes / num_ocupados, NA)
   ) |>
   ungroup()
 head(test_dataset)
