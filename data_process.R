@@ -6,27 +6,33 @@
 library(pacman)
 
 pacman::p_load(
-  tidyverse, dyplr, ggplot2
+  tidyverse, dyplr, ggplot2, openxlsx
 )
 
 #-----------ESTABLECER DIRECTORIO--------------------------
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-load("Taller2.RData")
 
-#-1. EXPLORING train_dataset ------------------------------------
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+
+# 1. Cargar los datos ----
+
+train_hogares <- read_csv("train_hogares.csv")
+train_personas <- readRDS("train_personas.rds")
+
+test_hogares <- read_csv("test_hogares.csv")
+test_personas <- read_csv("test_personas.csv")
+
+# > TRAIN DATA SET -------
+
+#-2. MERGE in train dataset ------------------------------------
+
 train_hogares <- train_hogares |>
-  select(colnames(test_hogares))
+  select(colnames(test_hogares), Pobre)
 
 train_personas <- train_personas |> 
   select(colnames(test_personas))
 
 train_dataset <- train_hogares |> 
   left_join(train_personas, by = c("id", "Clase", "Dominio", "Fex_c", "Fex_dpto", "Depto"))
-
-train_dataset |> 
-  select(starts_with("P")) |> 
-  mutate_all(as.factor) |> 
-  summary()
 
 # ----> 1. EXPLORING DATA SET  
 # MAIN STATISTICS
@@ -109,9 +115,6 @@ train_dataset |>
   mutate(mayor_gasto = ifelse(P5100 > P5130, "Amortización", "Imputed Rent")) |> 
   count(mayor_gasto)
 
-train_dataset <- train_dataset |>
-  select(-mayor_gasto)
-
 # We assign rent (P5140) or imputed rent (P5130) based on P5090
 train_dataset <- train_dataset |>
   mutate(costo_vivienda = ifelse(P5090 == 3, P5140, P5130))
@@ -142,13 +145,14 @@ train_dataset <- train_dataset |>
 train_dataset <- train_dataset |>
   group_by(id) |>
   mutate(
-    ocupados = sum(Oc, na.rm = TRUE),
-    dependientes = sum(Ina, na.rm = TRUE) + 
+    num_ocupados = sum(Oc, na.rm = TRUE),
+    num_dependientes = sum(Ina, na.rm = TRUE) + 
                    sum(Des, na.rm = TRUE) + 
                    sum(ifelse(Pet == 0, 1, 0), na.rm = TRUE),
-    tasa_dependencia = ifelse(ocupados > 0, dependientes / ocupados, NA)
+    tasa_dependencia = ifelse(num_ocupados > 0, num_dependientes / num_ocupados, NA)
   ) |>
   ungroup()
+
 head(train_dataset)
 
 #Revisando si es viable imputar los NA
@@ -196,6 +200,7 @@ sum(is.na(train_dataset$vulnerabilidad))
 hist(train_dataset$vulnerabilidad)
 
 # ----> Informal work per household
+
 train_dataset <- train_dataset |> 
   group_by(id) |> 
   mutate(
@@ -256,16 +261,12 @@ train_dataset <- train_dataset |>
 train_dataset <- train_dataset |> 
   filter(P6050 == 1)
 
-# ------------------------------------------------------------------------------
-# -----------> TEST DATA SET 
-#-1. EXPLORING test_dataset ------------------------------------
+# -----------> TEST DATA SET -----
+
+#-1. MERGE in test dataset ------------------------------------
+
 test_dataset <- test_hogares |> 
   left_join(test_personas, by = c("id", "Clase", "Dominio", "Fex_c", "Fex_dpto", "Depto"))
-
-test_dataset |> 
-  select(starts_with("P")) |> 
-  mutate_all(as.factor) |> 
-  summary()
 
 # ----> 1. EXPLORING DATA SET  
 # MAIN STATISTICS
@@ -341,15 +342,14 @@ test_dataset |>
     pays_imputed_rent = sum(!is.na(P5130)),
     total_people = n()
   )
+
 # We compare amortization vs imputed rent for some households (P5090 == 2)
+
 test_dataset |>
   filter(P5090 == 2) |>
   select(id, P5100, P5130) |>
-  mutate(mayor_gasto = ifelse(P5100 > P5130, "Amortización", "Imputed Rent")) |> 
+  mutate(mayor_gasto = ifelse(P5100 > P5130, "Amortización", "Imputed Rent")) |>
   count(mayor_gasto)
-
-test_dataset <- test_dataset |>
-  select(-mayor_gasto)
 
 # We assign rent (P5140) or imputed rent (P5130) based on P5090
 test_dataset <- test_dataset |>
@@ -381,11 +381,11 @@ test_dataset <- test_dataset |>
 test_dataset <- test_dataset |>
   group_by(id) |>
   mutate(
-    ocupados = sum(Oc, na.rm = TRUE),
-    dependientes = sum(Ina, na.rm = TRUE) + 
+    num_ocupados = sum(Oc, na.rm = TRUE),
+    num_dependientes = sum(Ina, na.rm = TRUE) + 
       sum(Des, na.rm = TRUE) + 
       sum(ifelse(Pet == 0, 1, 0), na.rm = TRUE),
-    tasa_dependencia = ifelse(ocupados > 0, dependientes / ocupados, NA)
+    tasa_dependencia = ifelse(num_ocupados > 0, num_dependientes / num_ocupados, NA)
   ) |>
   ungroup()
 head(test_dataset)
@@ -496,7 +496,50 @@ test_dataset <- test_dataset |>
 test_dataset <- test_dataset |> 
   filter(P6050 == 1)
 
+# Renombramos y seleccionamos las variables finales ----
+
+# en el train
+
+train_dataset <- train_dataset |> 
+  ungroup()
+
+train_dataset <- train_dataset |> 
+  select(colnames(test_hogares),Pobre, 
+         P6020, P6040, 
+         P6210,P6240,regimen_subsidiado:last_col()) |> 
+  select(-c(P5100, P5130,P5140)) |> 
+  rename(num_cuartos = P5000, 
+         num_dormitorios = P5010, 
+         tipo_posesion = P5090, 
+         sexo_jefe = P6020, 
+         edad_jefe = P6040, 
+         educ_jefe = P6210, 
+         actividad_jefe = P6240) 
+
+train_dataset <- train_dataset |> 
+  mutate(across(.cols = -c(id, Li, Lp, Fex_c, Fex_dpto, hacinamiento, prop_informal, int_subempleo, costo_vivienda), .fns = as.factor)) 
+
+# En el test
 
 test_dataset <- test_dataset |> 
-  filter(P6050 == 1)
+  ungroup()
 
+test_dataset <- test_dataset |> 
+  select(colnames(test_hogares), 
+         P6020, P6040, 
+         P6210,P6240,regimen_subsidiado:last_col()) |> 
+  select(-c(P5100, P5130,P5140)) |> 
+  rename(num_cuartos = P5000, 
+         num_dormitorios = P5010, 
+         tipo_posesion = P5090, 
+         sexo_jefe = P6020, 
+         edad_jefe = P6040, 
+         educ_jefe = P6210, 
+         actividad_jefe = P6240) 
+
+test_dataset <- test_dataset |> 
+  mutate(across(.cols = -c(id, Li, Lp, Fex_c, Fex_dpto, hacinamiento, prop_informal, int_subempleo, costo_vivienda), .fns = as.factor)) 
+
+
+write.xlsx(train_dataset, file = "train_dataset.xlsx")
+write.xlsx(test_dataset, file = "test_dataset.xlsx")
