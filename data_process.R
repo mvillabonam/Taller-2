@@ -34,7 +34,17 @@ train_personas <- train_personas |>
 train_dataset <- train_hogares |> 
   left_join(train_personas, by = c("id", "Clase", "Dominio", "Fex_c", "Fex_dpto", "Depto"))
 
+<<<<<<< Updated upstream
 # ----> 1. EXPLORING DATA SET  
+=======
+train_dataset |> 
+  select(starts_with("P")) |> 
+  mutate_all(as.factor) |> 
+  summary()
+
+# ----> 1. EXPLORING DATA SET  ----
+
+>>>>>>> Stashed changes
 # MAIN STATISTICS
 summary <- train_dataset |> 
   select(where(is.numeric)) |> 
@@ -47,6 +57,7 @@ summary <- train_dataset |>
     NA_count = sum(is.na(Value)),
     NA_percent = round(100 * mean(is.na(Value)), 2)
   )
+
 write_csv(summary, "1.Exploracion.csv")
 
 # ----> CREATE GROUP AGES 
