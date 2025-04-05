@@ -1,24 +1,65 @@
 ---
 title: "Taller 2 - G7"
-author: "Mariana Villabona Martínez"
+author: "Grupo 7"
+date: "2025-04-02"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+require(pacman)
+p_load(
+  readxl,         # Read excel files
+  tidyverse,      # Tidy data  
+  skimr           # Data summary  
+)
+
 ```
 
-## R Markdown
+## Carga de los datos 
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+```{r Reading poverty files}
 
-```{r cars}
-summary(cars)
+train_dataset <- read_xlsx("train_dataset.xlsx")
+test_dataset <- read_xlsx("test_dataset.xlsx")
+
 ```
 
-## Including Plots
+## Exploración de datos
+
+```{r, echo=FALSE}
+
+skim(train_dataset)
+skim(test_dataset)
+
+```
+
+
+## 1. Linear Regression
+
+## 2. Logistic Regression
+
+## 3. Elastic Net
+
+## 4. CARTs
+
+## 5. Random Forest
+
+## 6. ADA Boost
+
+## 7. Grad Boost
+
+## 8. XGBoost
+
+## 9. Baile Bayes
+
+## 10. LDA/QDA
+
+## 11. Naive Bayes
+
+## 12. KNN
 
 You can also embed plots, for example:
 
@@ -26,4 +67,3 @@ You can also embed plots, for example:
 plot(pressure)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
