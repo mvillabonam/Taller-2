@@ -15,8 +15,9 @@ p_load(
   skimr,          # Data summary  
   caret,          # Entrenamiento y evaluacion de modelos
   doParallel,     # Paralelizacion
-  MLeval         # Funciones para evaluar modelos con métricas gráficos.
-  #MLmetrics,      # Colección de métricas de evaluación para modelos de machine learning.
+  MLeval,         # Funciones para evaluar modelos con métricas gráficos.
+  #MLmetrics,     # Colección de métricas de evaluación para modelos de machine learning.
+  pROC
 )
 
 ```
@@ -53,15 +54,16 @@ ggplot(train_dataset, aes(x = Pobre, fill = Pobre)) +
 
 ```
 
+```{r Creating metric function}
+
+multiStats <- function(...) c(twoClassSummary(...), defaultSummary(...), prSummary(...), multiClassSummary(...))
+
+```
 
 
-## 1. Linear Regression
+## 1. Logistic Regression
 
 ```{r}
-
-# Definición de métricas de evaluacion
-multiStats <- function(...) c(twoClassSummary(...), defaultSummary(...), prSummary(...))
-
 # Control para caret
 ctrl <- trainControl(method = "cv",
                      number = 5,
@@ -72,35 +74,38 @@ ctrl <- trainControl(method = "cv",
 
 # Entrenar con glm binomial
 set.seed(1231)
-glm_caret <- train(Pobre ~ max_educ_hogar + ing_nomonet,
+
+x_variables <- c(colnames(train_dataset)[-c(1,3,8,9,10,11,13,14)])
+
+glm_caret <- train(formula(paste0("Pobre ~", paste0(x_variables, collapse = " + "))),
                    data = train_dataset,
                    method = "glm",
                    trControl = ctrl,
                    family = "binomial")
+
+
 ```
 
 
-## 2. Logistic Regression
-
 ## 3. Elastic Net
 
-## 4. CARTs
+## 3. CARTs
 
-## 5. Random Forest
+## 4. Random Forest
 
-## 6. ADA Boost
+## 5. ADA Boost
 
-## 7. Grad Boost
+## 6. Grad Boost
 
-## 8. XGBoost
+## 7. XGBoost
 
-## 9. Baile Bayes
+## 8. Baile Bayes
 
-## 10. LDA/QDA
+## 9. LDA/QDA
 
-## 11. Naive Bayes
+## 10. Naive Bayes
 
-## 12. KNN
+## 11. KNN
 
 You can also embed plots, for example:
 
