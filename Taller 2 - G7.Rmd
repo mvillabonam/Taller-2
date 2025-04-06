@@ -12,7 +12,11 @@ require(pacman)
 p_load(
   readxl,         # Read excel files
   tidyverse,      # Tidy data  
-  skimr           # Data summary  
+  skimr,          # Data summary  
+  caret,          # Entrenamiento y evaluacion de modelos
+  doParallel,     # Paralelizacion
+  MLeval         # Funciones para evaluar modelos con métricas gráficos.
+  #MLmetrics,      # Colección de métricas de evaluación para modelos de machine learning.
 )
 
 ```
@@ -25,6 +29,9 @@ p_load(
 train_dataset <- read_xlsx("train_dataset.xlsx")
 test_dataset <- read_xlsx("test_dataset.xlsx")
 
+train_dataset <- train_dataset %>%
+  mutate(Pobre = factor(Pobre, levels = c(1, 0), labels = c("Pobre", "No_pobre")))
+
 ```
 
 ## Exploración de datos
@@ -36,8 +43,42 @@ skim(test_dataset)
 
 ```
 
+```{r}
+
+ggplot(train_dataset, aes(x = Pobre, fill = Pobre)) +
+  geom_bar() + 
+  theme_minimal() +  
+  scale_fill_manual(values = c("Pobre" = "orange", "No_pobre"= "blue")) +  
+  labs(x = "", y = "# de Personas")  
+
+```
+
+
 
 ## 1. Linear Regression
+
+```{r}
+
+# Definición de métricas de evaluacion
+multiStats <- function(...) c(twoClassSummary(...), defaultSummary(...), prSummary(...))
+
+# Control para caret
+ctrl <- trainControl(method = "cv",
+                     number = 5,
+                     summaryFunction = multiStats,
+                     classProbs = TRUE,
+                     verbose = FALSE,
+                     savePredictions = TRUE)
+
+# Entrenar con glm binomial
+set.seed(1231)
+glm_caret <- train(Pobre ~ max_educ_hogar + ing_nomonet,
+                   data = train_dataset,
+                   method = "glm",
+                   trControl = ctrl,
+                   family = "binomial")
+```
+
 
 ## 2. Logistic Regression
 
