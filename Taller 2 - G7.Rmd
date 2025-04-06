@@ -42,6 +42,9 @@ train_dataset <- train_dataset %>%
 skim(train_dataset)
 skim(test_dataset)
 
+train_dataset <- train_dataset |> 
+  mutate(actividad_jefe = ifelse(is.na(actividad_jefe),"6", actividad_jefe))
+
 ```
 
 ```{r}
