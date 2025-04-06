@@ -12,7 +12,9 @@ require(pacman)
 p_load(
   readxl,         # Read excel files
   tidyverse,      # Tidy data  
-  skimr           # Data summary  
+  skimr,          # Data summary  
+  ranger,
+  caret
 )
 
 ```
@@ -24,6 +26,9 @@ p_load(
 
 train_dataset <- read_xlsx("train_dataset.xlsx")
 test_dataset <- read_xlsx("test_dataset.xlsx")
+
+# Pobre as a factor 
+train_dataset$Pobre <- as.factor(train_dataset$Pobre)
 
 ```
 
@@ -46,6 +51,199 @@ skim(test_dataset)
 ## 4. CARTs
 
 ## 5. Random Forest
+
+```{r, echo=FALSE}
+
+# Select only the specified predictors and the target variable for training
+predictors <- c("tasa_dependencia", "nper", "median_education", "hacinamiento", 
+                "costo_vivienda", "vulnerabilidad", "edad_jefe")
+
+# Train the model using ranger
+set.seed(42)
+rf_model_1 <- ranger(
+  Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+          costo_vivienda + vulnerabilidad + edad_jefe,
+  data = train_dataset,
+  num.trees = 500,
+  mtry = floor(sqrt(length(predictors))),
+  importance = 'impurity',
+  probability = FALSE,
+  classification = TRUE
+)
+
+# Variable importance
+var_importance <- importance(rf_model_1)
+var_importance_df <- data.frame(
+  Variable = names(var_importance),
+  Importance = var_importance
+)
+
+print(var_importance_df[order(-var_importance_df$Importance),])
+print(rf_model_1)
+#We got a OOB prediction error of 14,18%, lets check if we can improve this. 
+
+
+# Basic hyperparameter tuning for mtry
+mtry_values <- c(2, 3, 4, 5)
+best_oob_error <- Inf
+best_mtry <- NULL
+
+for(m in mtry_values) {
+  temp_model <- ranger(
+    Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+            costo_vivienda + vulnerabilidad + edad_jefe,
+    data = train_dataset,
+    num.trees = 500,
+    mtry = m,
+    importance = 'impurity',
+    classification = TRUE
+  )
+  
+  oob_error <- temp_model$prediction.error
+  cat("mtry =", m, "OOB error rate =", oob_error, "\n")
+  
+  if(oob_error < best_oob_error) {
+    best_oob_error <- oob_error
+    best_mtry <- m
+  }
+}
+
+cat("Best mtry value:", best_mtry, "with OOB error:", best_oob_error, "\n")
+#Best mtry value: 2 with OOB error: 0.1417374 
+
+final_model_1 <- ranger(
+  Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+          costo_vivienda + vulnerabilidad + edad_jefe,
+  data = train_dataset,
+  num.trees = 500,
+  mtry = best_mtry,
+  importance = 'impurity',
+  classification = TRUE
+)
+
+print(final_model_1)
+
+# Make predictions on the test set
+test_predictions <- predict(final_model_1, data = test_dataset)
+
+# Calculate F1 score from OOB predictions (to estimate Kaggle performance)
+train_preds_oob <- predict(final_model_1, data = train_dataset)$predictions
+conf_matrix <- table(Predicted = train_preds_oob, Actual = train_dataset$Pobre)
+print(conf_matrix)
+
+# Calculate metrics using OOB predictions
+true_pos <- conf_matrix["1", "1"]
+false_pos <- conf_matrix["1", "0"]
+false_neg <- conf_matrix["0", "1"]
+
+precision <- true_pos / (true_pos + false_pos)
+recall <- true_pos / (true_pos + false_neg)
+f1 <- 2 * precision * recall / (precision + recall)
+
+cat("OOB Performance Metrics:\n")
+cat("Precision:", precision, "\n")
+cat("Recall:", recall, "\n")
+cat("F1 Score:", f1, "\n")
+
+# Create submission dataframe
+submission <- data.frame(
+  id = test_dataset$id,
+  Pobre = as.integer(levels(test_predictions$predictions)[test_predictions$predictions])
+)
+
+# Save the results in the required format
+write.csv(submission, "RF_mtry_2.csv", row.names = FALSE, quote = FALSE)
+
+# Verify the format
+head(submission)
+```
+```{r, echo=FALSE}
+k=30
+folds <- createFolds(train_dataset$Pobre, k = k, list = TRUE, returnTrain = FALSE)
+
+# Initialize vectors to store performance metrics for each fold
+accuracy_vec <- numeric(k)
+precision_vec <- numeric(k)
+recall_vec <- numeric(k)
+f1_vec <- numeric(k)
+
+# Perform k-fold cross-validation
+for (i in 1:k) {
+  cat("Processing fold", i, "of", k, "\n")
+  
+  # Split data into training and validation sets for this fold
+  val_indices <- folds[[i]]
+  train_indices <- setdiff(1:nrow(train_dataset), val_indices)
+  
+  train_fold <- train_dataset[train_indices, ]
+  val_fold <- train_dataset[val_indices, ]
+  
+  # Train the model on the training set
+  model <- ranger(
+    Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+            costo_vivienda + vulnerabilidad + edad_jefe,
+    data = train_fold,
+    num.trees = 500,
+    mtry = floor(sqrt(length(predictors))),
+    importance = 'impurity',
+    classification = TRUE
+  )
+  
+  # Predict on validation set
+  val_predictions <- predict(model, data = val_fold)$predictions
+  
+  # Create confusion matrix
+  conf_matrix <- table(Predicted = val_predictions, Actual = val_fold$Pobre)
+  print(conf_matrix)
+  
+  # Calculate metrics
+  # Handle edge cases where some classes might not appear in a fold
+  if (dim(conf_matrix)[1] == 2 && dim(conf_matrix)[2] == 2) {
+    accuracy_vec[i] <- sum(diag(conf_matrix)) / sum(conf_matrix)
+    
+    # Check for zero entries to avoid division by zero
+    if (sum(conf_matrix["1",]) > 0) {
+      precision_vec[i] <- conf_matrix["1", "1"] / sum(conf_matrix["1",])
+    } else {
+      precision_vec[i] <- NA
+    }
+    
+    if (sum(conf_matrix[,"1"]) > 0) {
+      recall_vec[i] <- conf_matrix["1", "1"] / sum(conf_matrix[,"1"])
+    } else {
+      recall_vec[i] <- NA
+    }
+    
+    if (!is.na(precision_vec[i]) && !is.na(recall_vec[i]) && (precision_vec[i] + recall_vec[i] > 0)) {
+      f1_vec[i] <- 2 * precision_vec[i] * recall_vec[i] / (precision_vec[i] + recall_vec[i])
+    } else {
+      f1_vec[i] <- NA
+    }
+  } else {
+    # Handle case where confusion matrix doesn't have the expected dimensions
+    accuracy_vec[i] <- NA
+    precision_vec[i] <- NA
+    recall_vec[i] <- NA
+    f1_vec[i] <- NA
+  }
+  
+  cat("Fold", i, "metrics:\n")
+  cat("  Accuracy:", accuracy_vec[i], "\n")
+  cat("  Precision:", precision_vec[i], "\n")
+  cat("  Recall:", recall_vec[i], "\n")
+  cat("  F1 Score:", f1_vec[i], "\n\n")
+}
+
+
+# Calculate and print average metrics across all folds
+cat("Cross-validation results (averaged across", k, "folds):\n")
+cat("Average Accuracy:", mean(accuracy_vec, na.rm = TRUE), "±", sd(accuracy_vec, na.rm = TRUE), "\n")
+cat("Average Precision:", mean(precision_vec, na.rm = TRUE), "±", sd(precision_vec, na.rm = TRUE), "\n")
+cat("Average Recall:", mean(recall_vec, na.rm = TRUE), "±", sd(recall_vec, na.rm = TRUE), "\n")
+cat("Average F1 Score:", mean(f1_vec, na.rm = TRUE), "±", sd(f1_vec, na.rm = TRUE), "\n\n")
+
+
+```
 
 ## 6. ADA Boost
 
