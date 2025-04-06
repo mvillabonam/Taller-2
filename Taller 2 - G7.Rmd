@@ -69,7 +69,7 @@ multiStats <- function(...) c(twoClassSummary(...), defaultSummary(...), prSumma
 ```{r}
 # Control para caret
 ctrl <- trainControl(method = "cv",
-                     number = 5,
+                     number = 10,
                      summaryFunction = multiStats,
                      classProbs = TRUE,
                      verbose = FALSE,
@@ -86,7 +86,26 @@ glm_caret <- train(formula(paste0("Pobre ~", paste0(x_variables, collapse = " + 
                    trControl = ctrl,
                    family = "binomial")
 
+```
+```{r}
+set.seed(1231)
 
+model_2 <- c("median_education", "costo_vivienda", "recibe_subsidios",
+             "num_cuartos","num_ocupados", "vulnerabilidad", "regimen_subsidiado",
+             "hacinamiento", "num_dependientes", "Nper", "recibe_remesas", "tipo_posesion","int_subempleo")
+
+logit_2 <- train(formula(paste0("Pobre ~", paste0(model_2, collapse = " + "))),
+                   data = train_dataset,
+                   method = "glm",
+                   trControl = ctrl,
+                   family = "binomial")
+
+results_2 = data.frame("id"= test_dataset$id, 
+                       "pobre"= ifelse(predict(logit_2, newdata = test_dataset, type = "raw") =="Pobre", 1,0))
+
+ 
+
+write.csv(results_2,"LGIT.csv", row.names = FALSE)
 ```
 
 
