@@ -19,7 +19,8 @@ p_load(
   MLeval,         # Funciones para evaluar modelos con métricas gráficos.
   #MLmetrics,     # Colección de métricas de evaluación para modelos de machine learning.
   pROC,
-  adabag
+  adabag,
+  MLmetric
 )
 
 ```
@@ -201,172 +202,26 @@ write.csv(submission, "RF_mtry_2.csv", row.names = FALSE, quote = FALSE)
 
 # Verify the format
 head(submission)
-
-###### Model 2####
-
-# Train the model using ranger
-set.seed(42)
-rf_model_2 <- ranger(
-  Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
-          costo_vivienda + vulnerabilidad + recibe_subsidios+
-          num_ocupados+tipo_posesion+num_cuartos,
-  data = train_dataset,
-  num.trees = 500,
-  mtry = floor(sqrt(length(predictors))),
-  importance = 'impurity',
-  probability = FALSE,
-  classification = TRUE
-)
-
-# Variable importance
-var_importance <- importance(rf_model_2)
-var_importance_df <- data.frame(
-  Variable = names(var_importance),
-  Importance = var_importance
-)
-
-print(var_importance_df[order(-var_importance_df$Importance),])
-print(rf_model_2)
-```
-```{r, echo=FALSE}
-k=5
-folds <- createFolds(train_dataset$Pobre, k = k, list = TRUE, returnTrain = FALSE)
-
-# Initialize vectors to store performance metrics for each fold
-accuracy_vec <- numeric(k)
-precision_vec <- numeric(k)
-recall_vec <- numeric(k)
-f1_vec <- numeric(k)
-
-# Perform k-fold cross-validation
-for (i in 1:k) {
-  cat("Processing fold", i, "of", k, "\n")
-  
-  # Split data into training and validation sets for this fold
-  val_indices <- folds[[i]]
-  train_indices <- setdiff(1:nrow(train_dataset), val_indices)
-  
-  train_fold <- train_dataset[train_indices, ]
-  val_fold <- train_dataset[val_indices, ]
-  
-  # Train the model on the training set
-  model <- ranger(
-    Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
-            costo_vivienda + vulnerabilidad + edad_jefe,
-    data = train_fold,
-    num.trees = 500,
-    mtry = floor(sqrt(length(predictors))),
-    importance = 'impurity',
-    classification = TRUE
-  )
-  
-  # Predict on validation set
-  val_predictions <- predict(model, data = val_fold)$predictions
-  
-  # Create confusion matrix
-  conf_matrix <- table(Predicted = val_predictions, Actual = val_fold$Pobre)
-  print(conf_matrix)
-  
-  # Calculate metrics
-  # Handle edge cases where some classes might not appear in a fold
-  if (dim(conf_matrix)[1] == 2 && dim(conf_matrix)[2] == 2) {
-    accuracy_vec[i] <- sum(diag(conf_matrix)) / sum(conf_matrix)
-    
-    # Check for zero entries to avoid division by zero
-    if (sum(conf_matrix["1",]) > 0) {
-      precision_vec[i] <- conf_matrix["1", "1"] / sum(conf_matrix["1",])
-    } else {
-      precision_vec[i] <- NA
-    }
-    
-    if (sum(conf_matrix[,"1"]) > 0) {
-      recall_vec[i] <- conf_matrix["1", "1"] / sum(conf_matrix[,"1"])
-    } else {
-      recall_vec[i] <- NA
-    }
-    
-    if (!is.na(precision_vec[i]) && !is.na(recall_vec[i]) && (precision_vec[i] + recall_vec[i] > 0)) {
-      f1_vec[i] <- 2 * precision_vec[i] * recall_vec[i] / (precision_vec[i] + recall_vec[i])
-    } else {
-      f1_vec[i] <- NA
-    }
-  } else {
-    # Handle case where confusion matrix doesn't have the expected dimensions
-    accuracy_vec[i] <- NA
-    precision_vec[i] <- NA
-    recall_vec[i] <- NA
-    f1_vec[i] <- NA
-  }
-  
-  cat("Fold", i, "metrics:\n")
-  cat("  Accuracy:", accuracy_vec[i], "\n")
-  cat("  Precision:", precision_vec[i], "\n")
-  cat("  Recall:", recall_vec[i], "\n")
-  cat("  F1 Score:", f1_vec[i], "\n\n")
-}
-
-
-# Calculate and print average metrics across all folds
-cat("Cross-validation results (averaged across", k, "folds):\n")
-cat("Average Accuracy:", mean(accuracy_vec, na.rm = TRUE), "±", sd(accuracy_vec, na.rm = TRUE), "\n")
-cat("Average Precision:", mean(precision_vec, na.rm = TRUE), "±", sd(precision_vec, na.rm = TRUE), "\n")
-cat("Average Recall:", mean(recall_vec, na.rm = TRUE), "±", sd(recall_vec, na.rm = TRUE), "\n")
-cat("Average F1 Score:", mean(f1_vec, na.rm = TRUE), "±", sd(f1_vec, na.rm = TRUE), "\n\n")
-
-
 ```
 
 ## 5. ADA Boost
 ```{r, echo=FALSE}
-# Set up cross-validation
-ctrl <- trainControl(
-  method = "cv",
-  number = 5,
-  classProbs = TRUE,
-  summaryFunction = twoClassSummary,
-  savePredictions = TRUE
-)
+predictors <- c("tasa_dependencia", "Nper", "median_education", "hacinamiento",
+                "costo_vivienda", "vulnerabilidad", "edad_jefe")
+train_dataset$Pobre <- factor(train_dataset$Pobre)
 
-# Define the parameter grid for AdaBoost.M1
-adagrid <- expand.grid(
-  mfinal = c(50, 200, 500),
-  maxdepth = c(1, 2, 3, 4),
-  coeflearn = c("Breiman", "Freund", "Zhu")
-)
+# Verifica
+print(levels(train_dataset$Pobre))
+table(train_dataset$Pobre)
 
 
-# Train the AdaBoost.M1 model
 set.seed(123)  # For reproducibility
-adaboost_model <- train(
-  Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
-          costo_vivienda + vulnerabilidad + edad_jefe,
+adaboost_model <- boosting(
+  formula = as.formula(paste("Pobre", "~", paste(predictors, collapse = "+"))),
   data = train_dataset,
-  method = "AdaBoost.M1",  # AdaBoost.M1 algorithm
-  trControl = ctrl,
-  metric = "ROC",
-  tuneGrid = adagrid
+  mfinal = 50,  # Number of iterations
+  control = rpart.control(maxdepth = 3)  # Limit tree depth to avoid overfitting
 )
-
-adagrid <- expand.grid(
-  mfinal = c(50),             # solo un valor
-  maxdepth = c(1, 2),         # dos valores
-  coeflearn = c("Breiman")    # un método
-)
-
-# Display model results
-print(adaboost_model)
-print(adaboost_model$bestTune)
-
-# Plot variable importance
-varImp_result <- varImp(adaboost_model)
-plot(varImp_result, main = "Variable Importance")
-
-# Make predictions on the test set
-predictions <- predict(adaboost_model, newdata = test_dataset)
-
-# Calculate probabilities
-pred_probs <- predict(adaboost_model, newdata = test_dataset, type = "prob")
-
 ```
 ## 6. Grad Boost
 
