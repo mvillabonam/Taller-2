@@ -17,14 +17,17 @@ p_load(
   doParallel,     # Paralelizacion
   MLeval,         # Funciones para evaluar modelos con métricas gráficos.
   #MLmetrics,     # Colección de métricas de evaluación para modelos de machine learning.
+  ranger,         # Para bagging y random forest
+  randomForest,   # Para random forest
+  Metrics,        # Evaluation Metrics for ML
+  adabag,
+  gbm,            # Gradient Boosting
+  xgboost,        # XGBoosting
   pROC
 )
-
 ```
 
 ## Carga de los datos 
-
-
 ```{r Reading poverty files}
 
 train_dataset <- read_xlsx("train_dataset.xlsx")
@@ -38,7 +41,6 @@ train_dataset <- train_dataset %>%
 ## Exploración de datos
 
 ```{r, echo=FALSE}
-
 skim(train_dataset)
 skim(test_dataset)
 
@@ -48,7 +50,6 @@ train_dataset <- train_dataset |>
 ```
 
 ```{r}
-
 ggplot(train_dataset, aes(x = Pobre, fill = Pobre)) +
   geom_bar() + 
   theme_minimal() +  
@@ -58,14 +59,12 @@ ggplot(train_dataset, aes(x = Pobre, fill = Pobre)) +
 ```
 
 ```{r Creating metric function}
-
 multiStats <- function(...) c(twoClassSummary(...), defaultSummary(...), prSummary(...), multiClassSummary(...))
 
 ```
 
 
 ## 1. Logistic Regression
-
 ```{r}
 # Identificacion de variables 
 
@@ -105,6 +104,7 @@ glm_caret <- train(formula(paste0("Pobre ~", paste0(x_variables, collapse = " + 
                    method = "glm",
                    trControl = ctrl,
                    family = "binomial")
+<<<<<<< Updated upstream
 
 ```
 ```{r}
@@ -140,6 +140,9 @@ logit_3 <- train(formula(paste0("Pobre ~", paste0(model_3, collapse = " + "))),
                    trControl = ctrl,
                    family = "binomial")
 
+=======
+glm_caret
+>>>>>>> Stashed changes
 ```
 
 
@@ -154,6 +157,70 @@ logit_3 <- train(formula(paste0("Pobre ~", paste0(model_3, collapse = " + "))),
 ## 6. Grad Boost
 
 ## 7. XGBoost
+```{r XGBOOST}
+# OPTIMIZANDO SELECCIÓN DE PARÁMETROS 
+install.packages("ParBayesianOptimization")
+install.packages("xgboost")
+install.packages("pROC")      
+# Evauar resultados del ejercicio 
+fiveStats <- function(...) {
+  c(
+    caret::twoClassSummary(...), # Returns ROC, Sensitivity, Specificity
+    caret::defaultSummary(...)  # RMSE, R-squared/Accuracy and Kappa 
+  )
+}
+
+# HIPERPARÁMETROS: # árboles, profundidad, mínimo de observaciones x nodo, tasa de                     aprendizaje,  nivel mínimo de reducción en la función de                            pérdida, porcentaje de la muestra para entrenar (subsample)
+
+# Definiendo grilla
+grid_xbgoost <- expand.grid(nrounds = c(250,500),
+                            max_depth = c(1,3),
+                            eta = c(0.1,0.3), 
+                            gamma = c(0, 1), 
+                            min_child_weight =c(1000),
+                            colsample_bytree = c(0.7), 
+                            subsample = c(0.7))
+
+
+
+set.seed(1231)
+# ---> PROBANDO EL MODELO
+x_variables <- c(
+  "median_education", "costo_vivienda", "recibe_subsidios",
+  "num_cuartos", "num_ocupados", "vulnerabilidad", "regimen_subsidiado",
+  "hacinamiento", "num_dependientes", "Nper", "recibe_remesas",
+  "tipo_posesion", "int_subempleo"
+)
+
+formula_xgb <- as.formula(paste("Pobre ~", paste(x_variables, collapse = " + ")))
+
+Xgboost_tree <- train(formula_xgb,
+  data = train_dataset, 
+  method = "xgbTree", 
+  trControl = ctrl,
+  tuneGrid=grid_xbgoost,
+  metric = "ROC",
+  verbosity = 2
+)         
+Xgboost_tree
+
+# GRAPHIC OF THE THREE
+tree_plot <- xgboost::xgb.plot.tree(
+  model = Xgboost_tree$finalModel,
+  trees = 1:2,
+  plot_width = 1000,
+  plot_height = 500)
+tree_plot
+
+pred_prob <- predict(Xgboost_tree,
+                     newdata = test_dataset, 
+                     type = "prob")   
+
+# GRAPHIC OF THE THREE
+aucval_XGboost <- Metrics::auc(actual = default,predicted = pred_prob[,2])
+aucval_XGboost 
+
+```
 
 ## 8. Baile Bayes
 
