@@ -18,7 +18,8 @@ p_load(
   doParallel,     # Paralelizacion
   MLeval,         # Funciones para evaluar modelos con métricas gráficos.
   #MLmetrics,     # Colección de métricas de evaluación para modelos de machine learning.
-  pROC
+  pROC,
+  adabag
 )
 
 ```
@@ -200,6 +201,32 @@ write.csv(submission, "RF_mtry_2.csv", row.names = FALSE, quote = FALSE)
 
 # Verify the format
 head(submission)
+
+###### Model 2####
+
+# Train the model using ranger
+set.seed(42)
+rf_model_2 <- ranger(
+  Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+          costo_vivienda + vulnerabilidad + recibe_subsidios+
+          num_ocupados+tipo_posesion+num_cuartos,
+  data = train_dataset,
+  num.trees = 500,
+  mtry = floor(sqrt(length(predictors))),
+  importance = 'impurity',
+  probability = FALSE,
+  classification = TRUE
+)
+
+# Variable importance
+var_importance <- importance(rf_model_2)
+var_importance_df <- data.frame(
+  Variable = names(var_importance),
+  Importance = var_importance
+)
+
+print(var_importance_df[order(-var_importance_df$Importance),])
+print(rf_model_2)
 ```
 ```{r, echo=FALSE}
 k=5
@@ -289,11 +316,58 @@ cat("Average F1 Score:", mean(f1_vec, na.rm = TRUE), "±", sd(f1_vec, na.rm = TR
 
 ```
 
-## 6. ADA Boost
-=======
 ## 5. ADA Boost
->>>>>>> main
+```{r, echo=FALSE}
+# Set up cross-validation
+ctrl <- trainControl(
+  method = "cv",
+  number = 5,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  savePredictions = TRUE
+)
 
+# Define the parameter grid for AdaBoost.M1
+adagrid <- expand.grid(
+  mfinal = c(50, 200, 500),
+  maxdepth = c(1, 2, 3, 4),
+  coeflearn = c("Breiman", "Freund", "Zhu")
+)
+
+
+# Train the AdaBoost.M1 model
+set.seed(123)  # For reproducibility
+adaboost_model <- train(
+  Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+          costo_vivienda + vulnerabilidad + edad_jefe,
+  data = train_dataset,
+  method = "AdaBoost.M1",  # AdaBoost.M1 algorithm
+  trControl = ctrl,
+  metric = "ROC",
+  tuneGrid = adagrid
+)
+
+adagrid <- expand.grid(
+  mfinal = c(50),             # solo un valor
+  maxdepth = c(1, 2),         # dos valores
+  coeflearn = c("Breiman")    # un método
+)
+
+# Display model results
+print(adaboost_model)
+print(adaboost_model$bestTune)
+
+# Plot variable importance
+varImp_result <- varImp(adaboost_model)
+plot(varImp_result, main = "Variable Importance")
+
+# Make predictions on the test set
+predictions <- predict(adaboost_model, newdata = test_dataset)
+
+# Calculate probabilities
+pred_probs <- predict(adaboost_model, newdata = test_dataset, type = "prob")
+
+```
 ## 6. Grad Boost
 
 ## 7. XGBoost
