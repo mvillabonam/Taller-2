@@ -27,12 +27,13 @@ p_load(
 
 ```{r Reading poverty files}
 
-train_dataset <- read_xlsx("train_dataset.xlsx")
-test_dataset <- read_xlsx("test_dataset.xlsx")
+train_dataset <- readRDS("train_dataset.rds")
+test_dataset <- readRDS("test_dataset.rds")
 
-train_dataset <- train_dataset %>%
+train_dataset <- train_dataset |> 
   mutate(Pobre = factor(Pobre, levels = c(1, 0), labels = c("Pobre", "No_pobre")))
 
+train_dataset |> summary()
 ```
 
 ## Exploración de datos
@@ -42,8 +43,11 @@ train_dataset <- train_dataset %>%
 skim(train_dataset)
 skim(test_dataset)
 
-train_dataset <- train_dataset |> 
-  mutate(actividad_jefe = ifelse(is.na(actividad_jefe),"6", actividad_jefe))
+train_dataset$actividad_jefe[is.na(train_dataset$actividad_jefe)] <- 6
+
+test_dataset$num_ocupados[is.na(test_dataset$num_ocupados)] <- "mas_de_8"
+
+test_dataset$actividad_jefe[is.na(test_dataset$actividad_jefe)] <- 6
 
 ```
 
@@ -76,10 +80,11 @@ ctrl_rfe <- rfeControl(
   verbose = FALSE
 )
 
+ctrl_rfe$functions$summary <- multiStats
+
 set.seed(1231)
 
-
-rfe_logit <- rfe(x = train_dataset[,-c(1,3,8,9,10,11,13,14)],
+rfe_logit <- rfe(x = model.matrix(Pobre ~ . - 1, data = train_dataset[, -c(1,3,8,9,10,11,13)]),
                  y = train_dataset$Pobre,
                  metric = "F1",
                  rfeControl = ctrl_rfe,
@@ -107,6 +112,8 @@ glm_caret <- train(formula(paste0("Pobre ~", paste0(x_variables, collapse = " + 
                    family = "binomial")
 
 ```
+
+
 ```{r}
 set.seed(1231)
 
@@ -114,36 +121,94 @@ model_2 <- c("median_education", "costo_vivienda", "recibe_subsidios",
              "num_cuartos","num_ocupados", "vulnerabilidad", "regimen_subsidiado",
              "hacinamiento", "num_dependientes", "Nper", "recibe_remesas", "tipo_posesion","int_subempleo")
 
+
 logit_2 <- train(formula(paste0("Pobre ~", paste0(model_2, collapse = " + "))),
                    data = train_dataset,
                    method = "glm",
                    trControl = ctrl,
                    family = "binomial")
 
+prediction = predict(logit_2, newdata = test_dataset)
+
 results_2 = data.frame("id"= test_dataset$id, 
                        "pobre"= ifelse(predict(logit_2, newdata = test_dataset, type = "raw") =="Pobre", 1,0))
 
- 
-
 write.csv(results_2,"LGIT.csv", row.names = FALSE)
-
-
-set.seed(1231)
-
-model_3 <- c("sexo_jefe","poly(as.numeric(edad_jefe),2,raw=TRUE)", "median_education", "costo_vivienda", "recibe_subsidios",
-             "num_cuartos","num_ocupados", "vulnerabilidad", "regimen_subsidiado",
-             "hacinamiento", "num_dependientes", "Nper", "recibe_remesas", "tipo_posesion","int_subempleo")
-
-logit_3 <- train(formula(paste0("Pobre ~", paste0(model_3, collapse = " + "))),
-                   data = train_dataset,
-                   method = "glm",
-                   trControl = ctrl,
-                   family = "binomial")
 
 ```
 
 
-## 3. Elastic Net
+```{r}
+
+set.seed(1231)
+
+model_3 <- c("median_education", "costo_vivienda", "recibe_subsidios",
+             "num_cuartos","num_ocupados", "vulnerabilidad", "regimen_subsidiado",
+             "hacinamiento", "num_dependientes", "Nper", "recibe_remesas", "tipo_posesion","int_subempleo", "Clase", "ing_nomonet", "tasa_dependencia")
+
+train_dataset2 <- train_dataset |> 
+  filter(Dominio != "BOGOTA")
+
+logit_3 <- train(formula(paste0("Pobre ~", paste0(model_3, collapse = " + "))),
+                   data = train_dataset2,
+                   method = "glm",
+                   trControl = ctrl,
+                   family = "binomial")
+```
+
+
+## 3. Elastic Net 
+
+```{r}
+
+# EN sin desbalance de clases (modelo 3)
+
+lambda <- 0.5
+grid <- expand.grid("alpha" = seq(0,1,by=0.25), lambda = lambda) 
+
+set.seed(1231) 
+
+EN_logit_1 <- train(
+    formula(paste0("Pobre ~", paste0(model_3, collapse = " + "))), 
+    method = "glmnet",  
+    data = train_dataset2,  
+    family = "binomial",  
+    tuneGrid = grid,  
+    preProcess = c("center", "scale"),
+    trControl = ctrl,
+    metric = "F1")
+
+
+EN_logit_1
+```
+
+
+
+```{r}
+
+# Alternative cutoff (modelo 2)
+
+roc_obj_en<-roc(response = logit_2$pred$obs,  # Valores reales de la variable objetivo
+                predictor= logit_2$pred$Pobre, # Probabilidades predichas por el modelo
+                levels = c("No_pobre", "Pobre"),  # 
+                direction = "<")  # "<" "Pobre" es positivo
+
+rfThresh_en <- coords(roc_obj_en, x = "best", best.method = "closest.topleft")
+rfThresh_en
+
+prec_recall<-data.frame(coords(roc_obj_en, seq(0,1,length=100), ret=c("threshold", "precision", "recall")))
+
+prec_recall<- prec_recall  |>  mutate(F1=(2*precision*recall)/(precision+recall))
+prec_recall
+
+prec_recall$threshold[which.max(prec_recall$F1)]
+
+
+
+
+
+
+```
 
 ## 3. CARTs
 

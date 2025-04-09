@@ -11,7 +11,7 @@ pacman::p_load(
 
 #-----------ESTABLECER DIRECTORIO--------------------------
 
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+# setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 # 1. Cargar los datos ----
 
@@ -34,9 +34,9 @@ train_personas <- train_personas |>
 train_dataset <- train_hogares |> 
   left_join(train_personas, by = c("id", "Clase", "Dominio", "Fex_c", "Fex_dpto", "Depto"))
 
-<<<<<<< Updated upstream
+
 # ----> 1. EXPLORING DATA SET  
-=======
+
 train_dataset |> 
   select(starts_with("P")) |> 
   mutate_all(as.factor) |> 
@@ -44,7 +44,7 @@ train_dataset |>
 
 # ----> 1. EXPLORING DATA SET  ----
 
->>>>>>> Stashed changes
+
 # MAIN STATISTICS
 summary <- train_dataset |> 
   select(where(is.numeric)) |> 
@@ -92,7 +92,7 @@ JOB_TYPE <- train_dataset |>
   mutate(total = sum(count)) |> 
   mutate(porcentaje = round(count / total, 2))
 write_csv(JOB_TYPE, "JOB_TYPE.csv")
-#rm(JOB_TYPE)
+#rm(JOB_TYPE) 
 
 # -- 37% of the MISSING VALUES are between 18-65 AGE groups.
 train_dataset <- train_dataset %>%
@@ -516,19 +516,34 @@ train_dataset <- train_dataset |>
 
 train_dataset <- train_dataset |> 
   select(colnames(test_hogares),Pobre, 
-         P6020, P6040, 
+         P6020, age_group, 
          P6210,P6240,regimen_subsidiado:last_col()) |> 
   select(-c(P5100, P5130,P5140)) |> 
   rename(num_cuartos = P5000, 
          num_dormitorios = P5010, 
          tipo_posesion = P5090, 
          sexo_jefe = P6020, 
-         edad_jefe = P6040, 
+         edad_jefe = age_group, 
          educ_jefe = P6210, 
          actividad_jefe = P6240) 
 
 train_dataset <- train_dataset |> 
-  mutate(across(.cols = -c(id, Li, Lp, Fex_c, Fex_dpto, hacinamiento, prop_informal, int_subempleo, costo_vivienda), .fns = as.factor)) 
+  mutate(across(.cols = -c(id, Li, Lp, Fex_c, Fex_dpto, hacinamiento, prop_informal, median_education, int_subempleo, costo_vivienda, tasa_dependencia), .fns = as.factor)) 
+
+train_dataset <- train_dataset |> 
+  mutate(num_cuartos = fct_collapse(num_cuartos, 
+                                    mas_de_10 = c("11", "12", "13", "14", "15", "16","18", "43", "98")),
+         num_dormitorios = fct_collapse(num_dormitorios,
+                                        mas_de_8 = c("9", "15")),
+         Nper = fct_collapse(Nper,
+                             mas_de_16 = c("17", "18", "18", "19", "20", "21", "22", "28")),
+         Npersug = fct_collapse(Npersug,
+                             mas_de_16 = c("17", "18", "18", "19", "20", "21", "22", "28")),
+         num_ocupados = fct_collapse(num_ocupados,
+                                mas_de_8 = c("9", "10", "11", "14")),
+         num_dependientes = fct_collapse(num_dependientes,
+                                     mas_de_8 = c("9", "10", "11", "12")))
+  
 
 # En el test
 
@@ -537,20 +552,41 @@ test_dataset <- test_dataset |>
 
 test_dataset <- test_dataset |> 
   select(colnames(test_hogares), 
-         P6020, P6040, 
+         P6020, age_group, 
          P6210,P6240,regimen_subsidiado:last_col()) |> 
   select(-c(P5100, P5130,P5140)) |> 
   rename(num_cuartos = P5000, 
          num_dormitorios = P5010, 
          tipo_posesion = P5090, 
          sexo_jefe = P6020, 
-         edad_jefe = P6040, 
+         edad_jefe = age_group, 
          educ_jefe = P6210, 
          actividad_jefe = P6240) 
 
 test_dataset <- test_dataset |> 
-  mutate(across(.cols = -c(id, Li, Lp, Fex_c, Fex_dpto, hacinamiento, prop_informal, int_subempleo, costo_vivienda), .fns = as.factor)) 
+  mutate(across(.cols = -c(id, Li, Lp, Fex_c, Fex_dpto, hacinamiento, prop_informal, median_education, int_subempleo, tasa_dependencia, costo_vivienda), .fns = as.factor)) 
 
+test_dataset <- test_dataset |> 
+  mutate(num_cuartos = fct_collapse(num_cuartos, 
+                                    mas_de_10 = c("11", "12", "13", "14", "15", "16","18", "43", "98")),
+         num_dormitorios = fct_collapse(num_dormitorios,
+                                        mas_de_8 = c("9", "15")),
+         Nper = fct_collapse(Nper,
+                             mas_de_16 = c("17", "18", "18", "19", "20", "21", "22", "28")),
+         Npersug = fct_collapse(Npersug,
+                                mas_de_16 = c("17", "18", "18", "19", "20", "21", "22", "28")),
+         num_ocupados = fct_collapse(num_ocupados,
+                                     mas_de_8 = c("9", "10", "11", "14")),
+         num_dependientes = fct_collapse(num_dependientes,
+                                         mas_de_8 = c("9", "10")))
 
-write.xlsx(train_dataset, file = "train_dataset.xlsx")
-write.xlsx(test_dataset, file = "test_dataset.xlsx")
+# Verificar factores
+
+for (col in intersect(names(train_dataset), names(test_dataset))) {
+  if (is.factor(train_dataset[[col]])) {
+    test_dataset[[col]] <- factor(test_dataset[[col]], levels = levels(train_dataset[[col]]))
+  }
+}
+
+saveRDS(train_dataset, file = "train_dataset.rds")
+saveRDS(test_dataset, file = "test_dataset.rds")
