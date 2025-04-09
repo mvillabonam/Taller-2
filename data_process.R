@@ -272,6 +272,45 @@ train_dataset <- train_dataset |>
 train_dataset <- train_dataset |> 
   filter(P6050 == 1)
 
+# ----> RURAL NO PROPIETARIO DE VIVIENDA 
+train_dataset$RURAL <- ifelse(train_dataset$Clase == 2 & 
+                                       train_dataset$P5090 > 4 & 
+                                       train_dataset$P6100 == 3, 1, 0)
+train_dataset %>% count(RURAL)
+
+# ----> VULNERABILIDAD LABORAL
+train_dataset$CONDICION_LABORAL_FRAGIL <- ifelse(train_dataset$age_group %in% c("18-24", "24-65"),
+                                                 ifelse(train_dataset$P6240 %in% c(2, 4, 5), 1, 0), NA)
+
+train_dataset$BAJO_NIVEL_EDUCATIVO <- ifelse(train_dataset$age_group %in% c("18-24", "24-65"),
+                                             ifelse(train_dataset$P6210 < 5, 1, 0), NA)
+
+train_dataset$OCUPACION_INFORMAL <- ifelse(train_dataset$age_group %in% c("18-24", "24-65"),
+                                           ifelse(train_dataset$P6430 %in% c(3, 4, 6, 7), 1, 0), NA)
+
+train_dataset$NO_COTIZA_PENSION <- ifelse(train_dataset$age_group %in% c("18-24", "24-65"),
+                                          ifelse(train_dataset$P6920 == 2, 1, 0), NA)
+
+train_dataset$SUBEMPLEADO <- ifelse(train_dataset$age_group %in% c("18-24", "24-65"),
+                                    ifelse(train_dataset$P7090 == 1, 1, 0), NA)
+
+train_dataset$VULNERABILIDAD_LABORAL <- rowSums(train_dataset[, c(
+  "CONDICION_LABORAL_FRAGIL",
+  "BAJO_NIVEL_EDUCATIVO",
+  "OCUPACION_INFORMAL",
+  "NO_COTIZA_PENSION",
+  "SUBEMPLEADO"
+)], na.rm = TRUE)
+
+# ----> A nivel de Hogar
+vulnerabilidad_laboral <- train_dataset |> 
+  group_by(id) |> 
+  summarise(
+    suma_vulnerabilidad_laboral = sum(VULNERABILIDAD_LABORAL, na.rm = TRUE),
+    .groups = "drop"
+  ) |>  
+  left_join(vulnerabilidad_porcentaje, by = "id")
+
 # -----------> TEST DATA SET -----
 
 #-1. MERGE in test dataset ------------------------------------
@@ -507,40 +546,34 @@ test_dataset <- test_dataset |>
   filter(P6050 == 1)
 
 # ----> RURAL NO PROPIETARIO DE VIVIENDA 
-Clase
-Dominio
-P5090 (Condición legal )
-
-# ----> RURAL NO PROPIETARIO DE VIVIENDA 
-Clase
-Dominio
-P5090 (Condición legal )
+test_dataset$RURAL <- ifelse(test_dataset$Clase == 2 & 
+                               test_dataset$P5090 > 4 & 
+                               test_dataset$P6100 == 3, 1, 0)
+test_dataset %>% count(RURAL)
 
 # ----> VULNERABILIDAD LABORAL
-train_dataset$CONDICION_LABORAL_FRAGIL <- ifelse(train_dataset$P6240 %in% c(2, 4, 5), 1, 0)
-train_dataset$BAJO_NIVEL_EDUCATIVO     <- ifelse(train_dataset$P6210 < 5, 1, 0)
-train_dataset$OCUPACION_INFORMAL       <- ifelse(train_dataset$P6430 %in% c(3, 4, 6, 7), 1, 0)
-train_dataset$NO_COTIZA_PENSION        <- ifelse(train_dataset$P6920 == 2, 1, 0)
-train_dataset$SUBEMPLEADO              <- ifelse(train_dataset$P7090 == 1, 1, 0)
+test_dataset$CONDICION_LABORAL_FRAGIL <- ifelse(test_dataset$age_group %in% c("18-24", "24-65"),
+                                                 ifelse(test_dataset$P6240 %in% c(2, 4, 5), 1, 0), NA)
 
-train_dataset$VULNERABILIDAD_LABORAL <- rowSums(train_dataset[, c(
+test_dataset$BAJO_NIVEL_EDUCATIVO <- ifelse(test_dataset$age_group %in% c("18-24", "24-65"),
+                                             ifelse(test_dataset$P6210 < 5, 1, 0), NA)
+
+test_dataset$OCUPACION_INFORMAL <- ifelse(test_dataset$age_group %in% c("18-24", "24-65"),
+                                           ifelse(test_dataset$P6430 %in% c(3, 4, 6, 7), 1, 0), NA)
+
+test_dataset$NO_COTIZA_PENSION <- ifelse(test_dataset$age_group %in% c("18-24", "24-65"),
+                                          ifelse(test_dataset$P6920 == 2, 1, 0), NA)
+
+test_dataset$SUBEMPLEADO <- ifelse(test_dataset$age_group %in% c("18-24", "24-65"),
+                                    ifelse(test_dataset$P7090 == 1, 1, 0), NA)
+
+test_dataset$VULNERABILIDAD_LABORAL <- rowSums(test_dataset[, c(
   "CONDICION_LABORAL_FRAGIL",
   "BAJO_NIVEL_EDUCATIVO",
   "OCUPACION_INFORMAL",
   "NO_COTIZA_PENSION",
   "SUBEMPLEADO"
 )], na.rm = TRUE)
-
-# ----> A nivel de Hogar
-vulnerabilidad_porcentaje <- train_dataset |> 
-  filter(age_group %in% c("18-24", "24-65")) |> 
-  group_by(id, age_group) |> 
-  summarise(
-    porcentaje_vulnerables = mean(VULNERABILIDAD_LABORAL > 0, na.rm = TRUE) * 100,
-    .groups = "drop"
-  )
-train_dataset <- train_dataset |> 
-  left_join(vulnerabilidad_porcentaje, by = c("id", "age_group"))
 
 #----> POSICIONES OCUPACIONALES DE BAJO INGRESO
 # ------------------------------------------------------------------------------
