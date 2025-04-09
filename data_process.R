@@ -34,9 +34,9 @@ train_personas <- train_personas |>
 train_dataset <- train_hogares |> 
   left_join(train_personas, by = c("id", "Clase", "Dominio", "Fex_c", "Fex_dpto", "Depto"))
 
-<<<<<<< Updated upstream
+#<<<<<<< Upated upstream
 # ----> 1. EXPLORING DATA SET  
-=======
+
 train_dataset |> 
   select(starts_with("P")) |> 
   mutate_all(as.factor) |> 
@@ -44,7 +44,7 @@ train_dataset |>
 
 # ----> 1. EXPLORING DATA SET  ----
 
->>>>>>> Stashed changes
+#>>>>>>> Stashed changes
 # MAIN STATISTICS
 summary <- train_dataset |> 
   select(where(is.numeric)) |> 
@@ -446,7 +446,6 @@ sum(is.na(test_dataset$vulnerabilidad))
 hist(test_dataset$vulnerabilidad)
 
 # ----> Informal work per household
-
 test_dataset <- test_dataset |> 
   group_by(id) |> 
   mutate(
@@ -507,10 +506,46 @@ test_dataset <- test_dataset |>
 test_dataset <- test_dataset |> 
   filter(P6050 == 1)
 
+# ----> RURAL NO PROPIETARIO DE VIVIENDA 
+Clase
+Dominio
+P5090 (Condición legal )
+
+# ----> RURAL NO PROPIETARIO DE VIVIENDA 
+Clase
+Dominio
+P5090 (Condición legal )
+
+# ----> VULNERABILIDAD LABORAL
+train_dataset$CONDICION_LABORAL_FRAGIL <- ifelse(train_dataset$P6240 %in% c(2, 4, 5), 1, 0)
+train_dataset$BAJO_NIVEL_EDUCATIVO     <- ifelse(train_dataset$P6210 < 5, 1, 0)
+train_dataset$OCUPACION_INFORMAL       <- ifelse(train_dataset$P6430 %in% c(3, 4, 6, 7), 1, 0)
+train_dataset$NO_COTIZA_PENSION        <- ifelse(train_dataset$P6920 == 2, 1, 0)
+train_dataset$SUBEMPLEADO              <- ifelse(train_dataset$P7090 == 1, 1, 0)
+
+train_dataset$VULNERABILIDAD_LABORAL <- rowSums(train_dataset[, c(
+  "CONDICION_LABORAL_FRAGIL",
+  "BAJO_NIVEL_EDUCATIVO",
+  "OCUPACION_INFORMAL",
+  "NO_COTIZA_PENSION",
+  "SUBEMPLEADO"
+)], na.rm = TRUE)
+
+# ----> A nivel de Hogar
+vulnerabilidad_porcentaje <- train_dataset |> 
+  filter(age_group %in% c("18-24", "24-65")) |> 
+  group_by(id, age_group) |> 
+  summarise(
+    porcentaje_vulnerables = mean(VULNERABILIDAD_LABORAL > 0, na.rm = TRUE) * 100,
+    .groups = "drop"
+  )
+train_dataset <- train_dataset |> 
+  left_join(vulnerabilidad_porcentaje, by = c("id", "age_group"))
+
+#----> POSICIONES OCUPACIONALES DE BAJO INGRESO
+# ------------------------------------------------------------------------------
+# ------> EXPORTING DATA SET
 # Renombramos y seleccionamos las variables finales ----
-
-# en el train
-
 train_dataset <- train_dataset |> 
   ungroup()
 
@@ -531,7 +566,6 @@ train_dataset <- train_dataset |>
   mutate(across(.cols = -c(id, Li, Lp, Fex_c, Fex_dpto, hacinamiento, prop_informal, int_subempleo, costo_vivienda), .fns = as.factor)) 
 
 # En el test
-
 test_dataset <- test_dataset |> 
   ungroup()
 
