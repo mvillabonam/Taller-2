@@ -47,6 +47,9 @@ skim(test_dataset)
 train_dataset <- train_dataset |> 
   mutate(actividad_jefe = ifelse(is.na(actividad_jefe),"6", actividad_jefe))
 
+test_dataset <- test_dataset |> 
+  mutate(actividad_jefe = ifelse(is.na(actividad_jefe),"6", actividad_jefe))
+
 ```
 
 ```{r}
@@ -66,29 +69,9 @@ multiStats <- function(...) c(twoClassSummary(...), defaultSummary(...), prSumma
 
 ## 1. Logistic Regression
 ```{r}
-# Identificacion de variables 
-
-ctrl_rfe <- rfeControl(
-  functions = lrFuncs,  
-  method = "cv",             
-  number = 10,                
-  verbose = FALSE
-)
-
-set.seed(1231)
-
-
-rfe_logit <- rfe(x = train_dataset[,-c(1,3,8,9,10,11,13,14)],
-                 y = train_dataset$Pobre,
-                 metric = "F1",
-                 rfeControl = ctrl_rfe,
-                 sizes = seq(5, 30, by = 5), 
-                 maximize = TRUE)
-
-
-# Control para train
+# Control para caret
 ctrl <- trainControl(method = "cv",
-                     number = 10,
+                     number = 5,
                      summaryFunction = multiStats,
                      classProbs = TRUE,
                      verbose = FALSE,
@@ -104,45 +87,7 @@ glm_caret <- train(formula(paste0("Pobre ~", paste0(x_variables, collapse = " + 
                    method = "glm",
                    trControl = ctrl,
                    family = "binomial")
-<<<<<<< Updated upstream
-
-```
-```{r}
-set.seed(1231)
-
-model_2 <- c("median_education", "costo_vivienda", "recibe_subsidios",
-             "num_cuartos","num_ocupados", "vulnerabilidad", "regimen_subsidiado",
-             "hacinamiento", "num_dependientes", "Nper", "recibe_remesas", "tipo_posesion","int_subempleo")
-
-logit_2 <- train(formula(paste0("Pobre ~", paste0(model_2, collapse = " + "))),
-                   data = train_dataset,
-                   method = "glm",
-                   trControl = ctrl,
-                   family = "binomial")
-
-results_2 = data.frame("id"= test_dataset$id, 
-                       "pobre"= ifelse(predict(logit_2, newdata = test_dataset, type = "raw") =="Pobre", 1,0))
-
- 
-
-write.csv(results_2,"LGIT.csv", row.names = FALSE)
-
-
-set.seed(1231)
-
-model_3 <- c("sexo_jefe","poly(as.numeric(edad_jefe),2,raw=TRUE)", "median_education", "costo_vivienda", "recibe_subsidios",
-             "num_cuartos","num_ocupados", "vulnerabilidad", "regimen_subsidiado",
-             "hacinamiento", "num_dependientes", "Nper", "recibe_remesas", "tipo_posesion","int_subempleo")
-
-logit_3 <- train(formula(paste0("Pobre ~", paste0(model_3, collapse = " + "))),
-                   data = train_dataset,
-                   method = "glm",
-                   trControl = ctrl,
-                   family = "binomial")
-
-=======
 glm_caret
->>>>>>> Stashed changes
 ```
 
 
@@ -187,7 +132,7 @@ set.seed(1231)
 # ---> PROBANDO EL MODELO
 x_variables <- c(
   "median_education", "costo_vivienda", "recibe_subsidios",
-  "num_cuartos", "num_ocupados", "vulnerabilidad", "regimen_subsidiado",
+  "num_cuartos", "vulnerabilidad", "regimen_subsidiado",
   "hacinamiento", "num_dependientes", "Nper", "recibe_remesas",
   "tipo_posesion", "int_subempleo"
 )
@@ -200,21 +145,34 @@ Xgboost_tree <- train(formula_xgb,
   trControl = ctrl,
   tuneGrid=grid_xbgoost,
   metric = "ROC",
-  verbosity = 2
+  verbosity = 0
 )         
 Xgboost_tree
+
+# PREDICTIONS 
+test_predictions <- predict(Xgboost_tree,
+                     newdata = test_dataset, 
+                     type = "prob")
+predicted_class <- ifelse(test_predictions$Pobre > 0.5, 1, 0)
+
+submission <- data.frame(
+  id = test_dataset$id,
+  Pobre = predicted_class
+)
+
+# ENTREGA 3
+write.csv(submission, "XGBOOST.csv", row.names = FALSE, quote = FALSE)
 
 # GRAPHIC OF THE THREE
 tree_plot <- xgboost::xgb.plot.tree(
   model = Xgboost_tree$finalModel,
   trees = 1:2,
-  plot_width = 1000,
-  plot_height = 500)
+  plot_width = 2000,
+  plot_height = 1000)
 tree_plot
 
-pred_prob <- predict(Xgboost_tree,
-                     newdata = test_dataset, 
-                     type = "prob")   
+# Verify the format
+head(submission)
 
 # GRAPHIC OF THE THREE
 aucval_XGboost <- Metrics::auc(actual = default,predicted = pred_prob[,2])
