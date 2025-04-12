@@ -34,7 +34,6 @@ train_personas <- train_personas |>
 train_dataset <- train_hogares |> 
   left_join(train_personas, by = c("id", "Clase", "Dominio", "Fex_c", "Fex_dpto", "Depto"))
 
-
 # ----> 1. EXPLORING DATA SET  
 
 train_dataset |> 
@@ -43,8 +42,6 @@ train_dataset |>
   summary()
 
 # ----> 1. EXPLORING DATA SET  ----
-
-
 # MAIN STATISTICS
 summary <- train_dataset |> 
   select(where(is.numeric)) |> 
@@ -272,6 +269,44 @@ train_dataset <- train_dataset |>
 train_dataset <- train_dataset |> 
   filter(P6050 == 1)
 
+# ----> RURAL NO PROPIETARIO DE VIVIENDA 
+train_dataset$RURAL <- ifelse(train_dataset$Clase == 2 & 
+                                       train_dataset$P5090 > 4 & 
+                                       train_dataset$P6100 == 3, 1, 0)
+train_dataset %>% count(RURAL)
+
+# ----> VULNERABILIDAD LABORAL
+train_dataset$CONDICION_LABORAL_FRAGIL <- ifelse(train_dataset$age_group %in% c("18-24", "24-65"),
+                                                 ifelse(train_dataset$P6240 %in% c(2, 4, 5), 1, 0), NA)
+
+train_dataset$BAJO_NIVEL_EDUCATIVO <- ifelse(train_dataset$age_group %in% c("18-24", "24-65"),
+                                             ifelse(train_dataset$P6210 < 5, 1, 0), NA)
+
+train_dataset$OCUPACION_INFORMAL <- ifelse(train_dataset$age_group %in% c("18-24", "24-65"),
+                                           ifelse(train_dataset$P6430 %in% c(3, 4, 6, 7), 1, 0), NA)
+
+train_dataset$NO_COTIZA_PENSION <- ifelse(train_dataset$age_group %in% c("18-24", "24-65"),
+                                          ifelse(train_dataset$P6920 == 2, 1, 0), NA)
+
+train_dataset$SUBEMPLEADO <- ifelse(train_dataset$age_group %in% c("18-24", "24-65"),
+                                    ifelse(train_dataset$P7090 == 1, 1, 0), NA)
+
+train_dataset$VULNERABILIDAD_LABORAL <- rowSums(train_dataset[, c(
+  "CONDICION_LABORAL_FRAGIL",
+  "BAJO_NIVEL_EDUCATIVO",
+  "OCUPACION_INFORMAL",
+  "NO_COTIZA_PENSION",
+  "SUBEMPLEADO"
+)], na.rm = TRUE)
+
+# ----> A nivel de Hogar
+train_dataset <- train_dataset %>%
+  group_by(id) %>%
+  mutate(
+    VULNERABILIDAD_LABORAL = sum(VULNERABILIDAD_LABORAL, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
 # -----------> TEST DATA SET -----
 
 #-1. MERGE in test dataset ------------------------------------
@@ -446,7 +481,6 @@ sum(is.na(test_dataset$vulnerabilidad))
 hist(test_dataset$vulnerabilidad)
 
 # ----> Informal work per household
-
 test_dataset <- test_dataset |> 
   group_by(id) |> 
   mutate(
@@ -507,10 +541,48 @@ test_dataset <- test_dataset |>
 test_dataset <- test_dataset |> 
   filter(P6050 == 1)
 
+# ----> RURAL NO PROPIETARIO DE VIVIENDA 
+test_dataset$RURAL <- ifelse(test_dataset$Clase == 2 & 
+                                test_dataset$P5090 > 4 & 
+                                test_dataset$P6100 == 3, 1, 0)
+test_dataset %>% count(RURAL)
+
+# ----> VULNERABILIDAD LABORAL
+test_dataset$CONDICION_LABORAL_FRAGIL <- ifelse(test_dataset$age_group %in% c("18-24", "24-65"),
+                                                 ifelse(test_dataset$P6240 %in% c(2, 4, 5), 1, 0), NA)
+
+test_dataset$BAJO_NIVEL_EDUCATIVO <- ifelse(test_dataset$age_group %in% c("18-24", "24-65"),
+                                             ifelse(test_dataset$P6210 < 5, 1, 0), NA)
+
+test_dataset$OCUPACION_INFORMAL <- ifelse(test_dataset$age_group %in% c("18-24", "24-65"),
+                                           ifelse(test_dataset$P6430 %in% c(3, 4, 6, 7), 1, 0), NA)
+
+test_dataset$NO_COTIZA_PENSION <- ifelse(test_dataset$age_group %in% c("18-24", "24-65"),
+                                          ifelse(test_dataset$P6920 == 2, 1, 0), NA)
+
+test_dataset$SUBEMPLEADO <- ifelse(test_dataset$age_group %in% c("18-24", "24-65"),
+                                    ifelse(test_dataset$P7090 == 1, 1, 0), NA)
+
+test_dataset$VULNERABILIDAD_LABORAL <- rowSums(test_dataset[, c(
+  "CONDICION_LABORAL_FRAGIL",
+  "BAJO_NIVEL_EDUCATIVO",
+  "OCUPACION_INFORMAL",
+  "NO_COTIZA_PENSION",
+  "SUBEMPLEADO"
+)], na.rm = TRUE)
+
+# ----> A nivel de Hogar
+test_dataset <- test_dataset %>%
+  group_by(id) %>%
+  mutate(
+    VULNERABILIDAD_LABORAL = sum(VULNERABILIDAD_LABORAL, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+#----> POSICIONES OCUPACIONALES DE BAJO INGRESO
+# ------------------------------------------------------------------------------
+# ------> EXPORTING DATA SET
 # Renombramos y seleccionamos las variables finales ----
-
-# en el train
-
 train_dataset <- train_dataset |> 
   ungroup()
 
@@ -546,7 +618,6 @@ train_dataset <- train_dataset |>
   
 
 # En el test
-
 test_dataset <- test_dataset |> 
   ungroup()
 
