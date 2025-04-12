@@ -101,8 +101,6 @@ glm_caret
 
 ## 4. Random Forest
 ```{r, echo=FALSE}
-
-# Select only the specified predictors and the target variable for training
 predictors <- c("tasa_dependencia", "nper", "median_education", "hacinamiento", 
                 "costo_vivienda", "vulnerabilidad", "edad_jefe")
 
@@ -130,8 +128,6 @@ print(var_importance_df[order(-var_importance_df$Importance),])
 print(rf_model_1)
 #We got a OOB prediction error of 14,18%, lets check if we can improve this. 
 
-
-# Basic hyperparameter tuning for mtry
 mtry_values <- c(2, 3, 4, 5)
 best_oob_error <- Inf
 best_mtry <- NULL
@@ -139,7 +135,7 @@ best_mtry <- NULL
 for(m in mtry_values) {
   temp_model <- ranger(
     Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
-            costo_vivienda + vulnerabilidad + edad_jefe,
+          costo_vivienda + vulnerabilidad + edad_jefe,
     data = train_dataset,
     num.trees = 500,
     mtry = m,
@@ -160,7 +156,7 @@ cat("Best mtry value:", best_mtry, "with OOB error:", best_oob_error, "\n")
 #Best mtry value: 2 with OOB error: 0.1417374 
 
 final_model_1 <- ranger(
-  Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+   Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
           costo_vivienda + vulnerabilidad + edad_jefe,
   data = train_dataset,
   num.trees = 500,
@@ -174,15 +170,14 @@ print(final_model_1)
 # Make predictions on the test set
 test_predictions <- predict(final_model_1, data = test_dataset)
 
-# Calculate F1 score from OOB predictions (to estimate Kaggle performance)
 train_preds_oob <- predict(final_model_1, data = train_dataset)$predictions
 conf_matrix <- table(Predicted = train_preds_oob, Actual = train_dataset$Pobre)
 print(conf_matrix)
 
 # Calculate metrics using OOB predictions
-true_pos <- conf_matrix["1", "1"]
-false_pos <- conf_matrix["1", "0"]
-false_neg <- conf_matrix["0", "1"]
+true_pos <- conf_matrix["Pobre", "Pobre"]
+false_pos <- conf_matrix["Pobre", "No_pobre"]
+false_neg <- conf_matrix["No_pobre", "Pobre"]
 
 precision <- true_pos / (true_pos + false_pos)
 recall <- true_pos / (true_pos + false_neg)
@@ -196,28 +191,48 @@ cat("F1 Score:", f1, "\n")
 # Create submission dataframe
 submission <- data.frame(
   id = test_dataset$id,
-  Pobre = as.integer(levels(test_predictions$predictions)[test_predictions$predictions])
+  Pobre = ifelse(test_predictions$predictions == "Pobre", 1, 0)
 )
 
-# Save the results in the required format
 write.csv(submission, "RF_mtry_2.csv", row.names = FALSE, quote = FALSE)
+head(submission)
 
-# Verify the format
+# ----> Model 2
+predictors <- c("tasa_dependencia", "Nper", "median_education", "hacinamiento", 
+                "costo_vivienda", "vulnerabilidad", "edad_jefe","recibe_subsidios",
+                "num_dependientes", "recibe_remesas", "num_dormitorios","informal")
+rf_model_2 <- ranger(
+  Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+          costo_vivienda + vulnerabilidad + edad_jefe+recibe_subsidios+
+                num_dependientes+recibe_remesas+num_dormitorios+informal,
+  data = train_dataset,
+  num.trees = 500,
+  mtry = floor(sqrt(length(predictors))),
+  importance = 'impurity',
+  probability = FALSE,
+  classification = TRUE
+)
+test_predictions <- predict(final_model_2, data = test_dataset)
+
+
+submission <- data.frame(
+  id = test_dataset$id,
+  Pobre = ifelse(test_predictions$predictions == "Pobre", 1, 0)
+)
+
+write.csv(submission, "RF_mtry_2.csv", row.names = FALSE, quote = FALSE)
 head(submission)
 ```
 
 ## 5. ADA Boost
 ```{r, echo=FALSE}
-predictors <- c("tasa_dependencia", "Nper", "median_education", "hacinamiento",
-                "costo_vivienda", "vulnerabilidad", "edad_jefe")
-
 
 set.seed(123)  # For reproducibility
 adaboost_model <- boosting(
-  formula = as.formula(paste("Pobre", "~", paste(predictors, collapse = "+"))),
+  Pobre ~ vulnerabilidad,
   data = train_dataset,
-  mfinal = 50,  # Number of iterations
-  control = rpart.control(maxdepth = 3)  # Limit tree depth to avoid overfitting
+  mfinal = 2,
+  control = rpart.control(maxdepth = 3)
 )
 
 print(adaboost_model)
@@ -303,10 +318,10 @@ aucval_XGboost
 
 ```
 
-## 8. Baile Bayes
+## 8. Naive Bayes
 ```{r, echo=FALSE}
 set.seed(456)
-k <- 5  
+k <- 5
 
 # Creating folds
 folds <- cut(seq(1, nrow(train_dataset)), breaks = k, labels = FALSE)
@@ -315,9 +330,10 @@ folds <- cut(seq(1, nrow(train_dataset)), breaks = k, labels = FALSE)
 f1_scores <- numeric(k)
 
 #Predictors
-predictors <- c("tasa_dependencia", "Nper", "median_education", "hacinamiento", 
-                "costo_vivienda", "vulnerabilidad", "edad_jefe","recibe_subsidios",
-                "num_dependientes", "recibe_remesas", "num_dormitorios","informal")
+predictors <-  c("median_education", "costo_vivienda", "recibe_subsidios",
+             "num_cuartos","num_ocupados", "vulnerabilidad", "regimen_subsidiado",
+             "hacinamiento", "num_dependientes", "Nper", "recibe_remesas", "tipo_posesion","int_subempleo")
+
 
 # Loop de cross-validation
 for(i in 1:k){
@@ -348,7 +364,7 @@ submission <- data.frame(
   id = test_dataset$id,
   Pobre = test_preds_numeric
 )
-write.csv(submission, "NB_laplace_0_kernel_FALSE_vars_12.csv", row.names = FALSE)
+write.csv(submission, "NB_laplace_0_kernel_FALSE_vars_13.csv", row.names = FALSE)
 
 # Verify the format
 head(submission)
