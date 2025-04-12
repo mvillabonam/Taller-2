@@ -17,8 +17,7 @@ p_load(
   caret,         # Entrenamiento y evaluacion de modelos
   doParallel,     # Paralelizacion
   MLeval,         # Funciones para evaluar modelos con métricas gráficos.
-<<<<<<< HEAD
-  #MLmetrics,     # Colección de métricas de evaluación para modelos de machine learning.
+  MLmetrics,     # Colección de métricas de evaluación para modelos de machine learning.
   pROC,
   rpart,
   rpart.plot,
@@ -84,6 +83,7 @@ ggplot(train_dataset, aes(x = Pobre, fill = Pobre)) +
 
 ```{r Creating metric function}
 multiStats <- function(...) c(twoClassSummary(...), defaultSummary(...), prSummary(...), multiClassSummary(...))
+
 # ESTABLECIENDO EL CONTROL ---> PERMITIENDO PARALELIZACIÓN DE NÚCLEOS
 num_cores <- parallel::detectCores() - 1
 cl <- makeCluster(num_cores)
@@ -190,9 +190,7 @@ logit_3 <- train(formula(paste0("Pobre ~", paste0(model_3, collapse = " + "))),
 ## 3. Elastic Net 
 
 ```{r}
-
 # EN sin desbalance de clases (modelo 3)
-
 grid <- expand.grid(
   alpha = seq(0, 1, by = 0.25),  
   lambda = 10^seq(-6, -2, length = 10)  
@@ -237,16 +235,12 @@ results_2 = data.frame("id"= test_dataset$id,
                        "pobre"= ifelse(predict(EN_logit_1, newdata = test_dataset, type = "raw") =="Pobre", 1,0))
 
 write.csv(results_2,"EN_.csv", row.names = FALSE)
-
-
 ```
 
 
 
 ```{r}
-
 # Alternative cutoff (modelo 2)
-
 roc_obj_en<-roc(response = EN_logit_1$pred$obs,  # Valores reales de la variable objetivo
                 predictor= EN_logit_1$pred$Pobre, # Probabilidades predichas por el modelo
                 levels = c("No_pobre", "Pobre"),  # 
@@ -276,12 +270,10 @@ results_2 = data.frame("id"= test_dataset$id,
   ))
 
 write.csv(results_2,"EN_lambda_1_e04_alpha_045.csv", row.names = FALSE)
-
 ```
 
 
 ```{r}
-
 # SMOTE 
 
 ctrl <- trainControl(method = "cv",
