@@ -303,13 +303,12 @@ train_dataset$VULNERABILIDAD_LABORAL <- rowSums(train_dataset[, c(
 )], na.rm = TRUE)
 
 # ----> A nivel de Hogar
-vulnerabilidad_laboral <- train_dataset |> 
-  group_by(id) |> 
-  summarise(
-    suma_vulnerabilidad_laboral = sum(VULNERABILIDAD_LABORAL, na.rm = TRUE),
-    .groups = "drop"
-  ) |>  
-  left_join(vulnerabilidad_porcentaje, by = "id")
+train_dataset <- train_dataset %>%
+  group_by(id) %>%
+  mutate(
+    VULNERABILIDAD_LABORAL = sum(VULNERABILIDAD_LABORAL, na.rm = TRUE)
+  ) %>%
+  ungroup()
 
 # -----------> TEST DATA SET -----
 
@@ -547,8 +546,8 @@ test_dataset <- test_dataset |>
 
 # ----> RURAL NO PROPIETARIO DE VIVIENDA 
 test_dataset$RURAL <- ifelse(test_dataset$Clase == 2 & 
-                               test_dataset$P5090 > 4 & 
-                               test_dataset$P6100 == 3, 1, 0)
+                                test_dataset$P5090 > 4 & 
+                                test_dataset$P6100 == 3, 1, 0)
 test_dataset %>% count(RURAL)
 
 # ----> VULNERABILIDAD LABORAL
@@ -574,6 +573,14 @@ test_dataset$VULNERABILIDAD_LABORAL <- rowSums(test_dataset[, c(
   "NO_COTIZA_PENSION",
   "SUBEMPLEADO"
 )], na.rm = TRUE)
+
+# ----> A nivel de Hogar
+test_dataset <- test_dataset %>%
+  group_by(id) %>%
+  mutate(
+    VULNERABILIDAD_LABORAL = sum(VULNERABILIDAD_LABORAL, na.rm = TRUE)
+  ) %>%
+  ungroup()
 
 #----> POSICIONES OCUPACIONALES DE BAJO INGRESO
 # ------------------------------------------------------------------------------
