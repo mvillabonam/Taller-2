@@ -34,7 +34,10 @@ p_load(
   xgboost,        # XGBoosting
   pROC,           # ROC curve
   ParBayesianOptimization, # Selecting parameters on XGBoost
-  doParallel,     # Paralellize data proccessing 
+  doParallel, # Paralellize data proccessing 
+  gridExtra,
+  corrplot,
+  stargazer
 )
 ```
 
@@ -42,18 +45,15 @@ p_load(
 ```{r Reading poverty files}
 train_dataset <- readRDS("train_dataset.rds")
 test_dataset <- readRDS("test_dataset.rds")
-
-train_dataset <- train_dataset |> 
+# Pobre as a factor 
+train_dataset <- train_dataset %>%
   mutate(Pobre = factor(Pobre, levels = c(1, 0), labels = c("Pobre", "No_pobre")))
 
 train_dataset |> summary()
 
-train_dataset <- read_xlsx("train_dataset.xlsx")
-test_dataset <- read_xlsx("test_dataset.xlsx")
 
-# Pobre as a factor 
-train_dataset <- train_dataset %>%
-  mutate(Pobre = factor(Pobre, levels = c(1, 0), labels = c("Pobre", "No_pobre")))
+
+
 ```
 
 ## Exploración de datos
@@ -98,8 +98,22 @@ ctrl <- trainControl(
   allowParallel = TRUE    
 )
 ```
+```{r Descritive Statistics}
 
+#  Cross-tabulations for key relationships
 
+poverty_vulnerability <- table(train_dataset$Pobre, train_dataset$vulnerabilidad)
+print(poverty_vulnerability_table)
+print(prop.table(poverty_vulnerability_table, margin = 1)) 
+
+poverty_informal <- table(train_dataset$Pobre, train_dataset$informal)
+print(poverty_informal_table)
+print(prop.table(poverty_informal_table, margin = 1)) 
+
+poverty_education <- table(train_dataset$Pobre, train_dataset$max_educ_hogar)
+print(poverty_education_table)
+print(prop.table(poverty_education_table, margin = 1)) 
+```
 ## 1. Logistic Regression
 ```{r}
 # Identificacion de variables 

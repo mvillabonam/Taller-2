@@ -1,0 +1,5 @@
+
+Descriptive Statistics for All Numeric Variables
+==========================================================
+Statistic N Mean St. Dev. Min Pctl(25) Median Pctl(75) Max
+==========================================================
