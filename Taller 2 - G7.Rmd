@@ -469,11 +469,13 @@ submission <- data.frame(
 
 write.csv(submission, "RF_mtry_2.csv", row.names = FALSE, quote = FALSE)
 head(submission)
-
+```
+```{r}
 # ----> Model 2
 predictors <- c("tasa_dependencia", "Nper", "median_education", "hacinamiento", 
                 "costo_vivienda", "vulnerabilidad", "edad_jefe","recibe_subsidios",
                 "num_dependientes", "recibe_remesas", "num_dormitorios","informal")
+
 rf_model_2 <- ranger(
   Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
           costo_vivienda + vulnerabilidad + edad_jefe+recibe_subsidios+
@@ -485,6 +487,41 @@ rf_model_2 <- ranger(
   probability = FALSE,
   classification = TRUE
 )
+
+for(m in mtry_values) {
+  temp_model <- ranger(
+    Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+          costo_vivienda + vulnerabilidad + edad_jefe,
+    data = train_dataset,
+    num.trees = 500,
+    mtry = m,
+    importance = 'impurity',
+    classification = TRUE
+  )
+  
+  oob_error <- temp_model$prediction.error
+  cat("mtry =", m, "OOB error rate =", oob_error, "\n")
+  
+  if(oob_error < best_oob_error) {
+    best_oob_error <- oob_error
+    best_mtry <- m
+  }
+}
+
+cat("Best mtry value:", best_mtry, "with OOB error:", best_oob_error, "\n")
+#Best mtry value: 3
+
+final_model_1 <- ranger(
+   Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+          costo_vivienda + vulnerabilidad + edad_jefe,
+  data = train_dataset,
+  num.trees = 500,
+  mtry = best_mtry,
+  importance = 'impurity',
+  classification = TRUE
+)
+
+print(final_model_2)
 test_predictions <- predict(final_model_2, data = test_dataset)
 
 
@@ -493,7 +530,7 @@ submission <- data.frame(
   Pobre = ifelse(test_predictions$predictions == "Pobre", 1, 0)
 )
 
-write.csv(submission, "RF_mtry_2.csv", row.names = FALSE, quote = FALSE)
+write.csv(submission, "RF_mtry_3.csv", row.names = FALSE, quote = FALSE)
 head(submission)
 ```
 
@@ -510,6 +547,7 @@ adaboost_model <- boosting(
 
 print(adaboost_model)
 ```
+
 ## 6. Grad Boost
 
 ```{r}
