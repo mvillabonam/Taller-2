@@ -85,7 +85,7 @@ ggplot(train_dataset, aes(x = Pobre, fill = Pobre)) +
 multiStats <- function(...) c(twoClassSummary(...), defaultSummary(...), prSummary(...), multiClassSummary(...))
 
 # ESTABLECIENDO EL CONTROL ---> PERMITIENDO PARALELIZACIÓN DE NÚCLEOS
-num_cores <- parallel::detectCores() - 1
+num_cores <- parallel::detectCores()/2
 cl <- makeCluster(num_cores)
 registerDoParallel(cl)
 
@@ -103,7 +103,6 @@ ctrl <- trainControl(
 ## 1. Logistic Regression
 ```{r}
 # Identificacion de variables 
-
 ctrl_rfe <- rfeControl(
   functions = lrFuncs,  
   method = "cv",             
@@ -124,12 +123,22 @@ rfe_logit <- rfe(x = model.matrix(Pobre ~ . - 1, data = train_dataset[, -c(1,3,8
 
 
 # Control para train
-ctrl <- trainControl(method = "cv",
-                     number = 5,
-                     summaryFunction = multiStats,
-                     classProbs = TRUE,
-                     verbose = FALSE,
-                     savePredictions = TRUE)
+#ctrl <- trainControl(method = "cv",
+#                     number = 5,
+#                     summaryFunction = multiStats,
+#                     classProbs = TRUE,
+#                     verbose = FALSE,
+#                     savePredictions = TRUE)
+
+ctrl <- trainControl(
+  method = "cv",        
+  number = 5,             
+  classProbs = TRUE,
+  summaryFunction = multiStats,
+  verboseIter = FALSE,
+  allowParallel = TRUE,
+  savePredictions = TRUE)
+
 # Entrenar con glm binomial
 set.seed(1231)
 
@@ -142,7 +151,6 @@ glm_caret <- train(formula(paste0("Pobre ~", paste0(x_variables, collapse = " + 
                    family = "binomial")
 
 ```
-
 
 ```{r}
 set.seed(1231)
@@ -166,7 +174,6 @@ results_2 = data.frame("id"= test_dataset$id,
 write.csv(results_2,"LGIT.csv", row.names = FALSE)
 glm_caret
 ```
-
 
 ```{r}
 
@@ -237,8 +244,6 @@ results_2 = data.frame("id"= test_dataset$id,
 write.csv(results_2,"EN_.csv", row.names = FALSE)
 ```
 
-
-
 ```{r}
 # Alternative cutoff (modelo 2)
 roc_obj_en<-roc(response = EN_logit_1$pred$obs,  # Valores reales de la variable objetivo
@@ -271,7 +276,6 @@ results_2 = data.frame("id"= test_dataset$id,
 
 write.csv(results_2,"EN_lambda_1_e04_alpha_045.csv", row.names = FALSE)
 ```
-
 
 ```{r}
 # SMOTE 
@@ -356,7 +360,6 @@ tree_rpart3 <- train(
     tuneLength = 20)
 
 ```
-
 
 ## 4. Random Forest
 ```{r, echo=FALSE}
@@ -496,8 +499,8 @@ adaboost_model <- boosting(
 
 print(adaboost_model)
 ```
-## 6. Grad Boost
 
+## 6. Grad Boost
 ```{r}
 grid_gbm <- expand.grid(
   n.trees = c(300, 500, 1000),
@@ -532,7 +535,6 @@ gbm_tree <- train(formula(paste0("Pobre ~", paste0(model_3, collapse = "+"))),
 
 ```
 
-
 ## 7. XGBoost
 ```{r XGBOOST}
 # OPTIMIZANDO SELECCIÓN DE PARÁMETROS 
@@ -556,8 +558,22 @@ selected_data <- train_dataset %>%
       }
     }
   ))
+
+selected_data <- selected_data |> 
+  filter(Dominio != "BOGOTA")
+
+ctrl <- trainControl(
+  method = "cv",        
+  number = 5,             
+  classProbs = TRUE,
+  summaryFunction = multiStats,
+  verboseIter = FALSE,
+  allowParallel = TRUE,
+  savePredictions = TRUE)
+
 # -------------------------- HIPERPARAMETERS -----------------------------------
-# HIPERPARÁMETROS: # árboles, profundidad, mínimo de observaciones x nodo, tasa de                     aprendizaje,  nivel mínimo de reducción en la función de                            pérdida, porcentaje de la muestra para entrenar (subsample)
+# HIPERPARÁMETROS: # árboles, profundidad, mínimo de observaciones x nodo, tasa de                     aprendizaje,  nivel mínimo de reducción en la función de pérdida, 
+# porcentaje de la muestra para entrenar (subsample)
 
 x_variables <- c(colnames(train_dataset)[-c(1,2,3,8,9,10,11,13,14)])
 X <- as.matrix(selected_data[, x_variables])
@@ -635,30 +651,78 @@ registerDoSEQ()
 optObj[["scoreSummary"]]
 getBestPars(optObj)
 
-#--------------------------------------------------------------------------------
+# ------------------------  METHOD SEEN ON LECTURE -----------------------------
 # Definiendo grilla
 grid_xbgoost <- expand.grid(nrounds = c(250,500),
-                            max_depth = c(5,15),
-                            eta = c(0.1,0.3), 
+                            max_depth = c(16),
+                            eta = c(0.01), 
                             gamma = c(0, 1), 
-                            min_child_weight =c(5),
+                            min_child_weight =c(9),
                             colsample_bytree = c(0.7), 
-                            subsample = c(0.5))
+                            subsample = c(0.7))
 
 
 set.seed(1231)
 # ---> PROBANDO EL MODELO
-train_dataset_clean <- train_dataset %>%
-  select(all_of(c("Pobre", x_variables))) %>%
-  na.omit()
-
-num_cores <- parallel::detectCores() - 1
-cl <- makeCluster(num_cores)
-registerDoParallel(cl)
 
 formula_xgb <- as.formula(paste("Pobre ~", paste(x_variables, collapse = " + ")))
 Xgboost_tree <- train(formula_xgb,
   data = train_dataset_clean, 
+  method = "xgbTree", 
+  trControl = ctrl,
+  tuneGrid=grid_xbgoost,
+  metric = "ROC",
+  verbosity = 0
+)         
+Xgboost_tree
+
+# PREDICTIONS 
+
+test_predictions <- predict(Xgboost_tree,
+                     newdata = test_dataset, 
+                     type = "prob")
+predicted_class <- ifelse(test_predictions$Pobre > 0.5, 1, 0)
+
+submission <- data.frame(
+  id = test_dataset$id,
+  Pobre = predicted_class
+)
+
+# ENTREGA 3
+write.csv(submission, "XGBOOST.csv", row.names = FALSE, quote = FALSE)
+
+# GRAPHIC OF THE THREE
+tree_plot <- xgboost::xgb.plot.tree(
+  model = Xgboost_tree$finalModel,
+  trees = 1:2,
+  plot_width = 2000,
+  plot_height = 1000)
+tree_plot
+
+# Verify the format
+head(submission)
+
+# GRAPHIC OF THE THREE
+aucval_XGboost <- Metrics::auc(actual = default,predicted = pred_prob[,2])
+aucval_XGboost 
+
+# ------------------------ WITHOUT BOGOTÁ --------------------------------------
+# Definiendo grilla
+grid_xbgoost <- expand.grid(nrounds = c(500),
+                            max_depth = c(16),
+                            eta = c(0.01), 
+                            gamma = c(0, 1), 
+                            min_child_weight =c(9),
+                            colsample_bytree = c(0.7), 
+                            subsample = c(0.7))
+
+
+set.seed(1231)
+# ---> PROBANDO EL MODELO
+
+formula_xgb <- as.formula(paste("Pobre ~", paste(x_variables, collapse = " + ")))
+Xgboost_tree <- train(formula_xgb,
+  data = train_dataset2, 
   method = "xgbTree", 
   trControl = ctrl,
   tuneGrid=grid_xbgoost,
@@ -749,6 +813,7 @@ write.csv(submission, "NB_laplace_0_kernel_FALSE_vars_13.csv", row.names = FALSE
 # Verify the format
 head(submission)
 ```
+
 ## 9. LDA/QDA
 ```{r LDA/QDA/RDA}
 ## LDA: LINEAR DISCRIMINANT ANALYSIS (LDA)
@@ -786,10 +851,7 @@ rda_model$results$F1
 ```
 
 
-## 10. Naive Bayes
-
-## 11. KNN
-
+## 10. K 
 ```{r pressure, echo=FALSE}
 set.seed(1410)
 default_knn <- train(
