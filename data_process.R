@@ -11,7 +11,7 @@ pacman::p_load(
 
 #-----------ESTABLECER DIRECTORIO--------------------------
 
-# setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 
 # 1. Cargar los datos ----
 
@@ -598,9 +598,9 @@ train_dataset <- train_dataset |>
          edad_jefe = age_group, 
          educ_jefe = P6210, 
          actividad_jefe = P6240) 
-
+train_dataset
 train_dataset <- train_dataset |> 
-  mutate(across(.cols = -c(id, Li, Lp, Fex_c, Fex_dpto, hacinamiento, prop_informal, median_education, int_subempleo, costo_vivienda, tasa_dependencia), .fns = as.factor)) 
+  mutate(across(.cols = -c(id, Li, Lp, Fex_c, Fex_dpto, hacinamiento, prop_informal, median_education, int_subempleo, costo_vivienda, tasa_dependencia,RURAL, VULNERABILIDAD_LABORAL), .fns = as.factor)) 
 
 train_dataset <- train_dataset |> 
   mutate(num_cuartos = fct_collapse(num_cuartos, 
@@ -635,7 +635,7 @@ test_dataset <- test_dataset |>
          actividad_jefe = P6240) 
 
 test_dataset <- test_dataset |> 
-  mutate(across(.cols = -c(id, Li, Lp, Fex_c, Fex_dpto, hacinamiento, prop_informal, median_education, int_subempleo, tasa_dependencia, costo_vivienda), .fns = as.factor)) 
+  mutate(across(.cols = -c(id, Li, Lp, Fex_c, Fex_dpto, hacinamiento, prop_informal, median_education, int_subempleo, tasa_dependencia, costo_vivienda,VULNERABILIDAD_LABORAL,RURAL), .fns = as.factor)) 
 
 test_dataset <- test_dataset |> 
   mutate(num_cuartos = fct_collapse(num_cuartos, 
