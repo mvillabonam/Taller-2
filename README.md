@@ -11,16 +11,12 @@ Contains reference materials including:
 - Job type documentation
 
 ### 📁 Models
-Contains CSV output files from different prediction models used for submission, including:
-- Random Forest models
-- Naive Bayes models
-- Additional classification algorithms
+Contains CSV output files from different prediction models used for submission.
 
 ### 📁 Scripts
 Contains the R code files for:
 - Data processing scripts
 - Model implementation code
-- "Taller 2 -Gm-Rmd.Rmd" - Main R Markdown file with all models and analysis
 
 ### 📁 Stores
 Contains datasets required for running the scripts:
@@ -31,7 +27,7 @@ Contains datasets required for running the scripts:
 
 ## Project Description
 
-This project implements multiple machine learning models to predict poverty status (poor vs. non-poor) of households based on socioeconomic indicators. The models directly classify households without using intermediate metrics, providing straightforward binary predictions.
+This project implements multiple machine learning models to predict poverty status (poor vs. non-poor) of households in Colombia based on socioeconomic indicators. The models directly classify households without using intermediate metrics, providing straightforward binary predictions.
 
 ## Models Implemented
 
