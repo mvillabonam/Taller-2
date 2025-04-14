@@ -6,7 +6,7 @@
 library(pacman)
 
 pacman::p_load(
-  tidyverse, dyplr, ggplot2, openxlsx
+  tidyverse, dyplr, ggplot2, openxlsx,knitr
 )
 
 #-----------ESTABLECER DIRECTORIO--------------------------
@@ -24,7 +24,6 @@ test_personas <- read_csv("test_personas.csv")
 # > TRAIN DATA SET -------
 
 #-2. MERGE in train dataset ------------------------------------
-
 train_hogares <- train_hogares |>
   select(colnames(test_hogares), Pobre)
 
@@ -41,6 +40,7 @@ train_dataset |>
   mutate_all(as.factor) |> 
   summary()
 
+# ---------------------- DATA DESCRIPTIVE STATISTICS----------------------------
 # ----> 1. EXPLORING DATA SET  ----
 # MAIN STATISTICS
 summary <- train_dataset |> 
@@ -55,9 +55,9 @@ summary <- train_dataset |>
     NA_percent = round(100 * mean(is.na(Value)), 2)
   )
 
-write_csv(summary, "1.Exploracion.csv")
+write_csv(summary, "2.Exploracion.csv")
 
-# ----> CREATE GROUP AGES 
+# ----> CREATE GROUP AGES FOR ANALYSIS OF MISSING VALUES
 train_dataset <- train_dataset |> 
   mutate(age_group = case_when(
     P6040 < 12 ~ "0-12",
@@ -69,27 +69,40 @@ train_dataset <- train_dataset |>
   mutate(age_group = factor(age_group, 
                             levels = c("0-12", "12-18", "18-24", "24-65", "65+"), 
                             ordered = TRUE))
+
 # ----> P6090 y P6100: 
 SEGURIDAD_SOCIAL <- train_dataset|> 
   group_by(P6090, P6100,age_group) |> 
   summarise(count = n(), .groups = "drop_last") |> 
   mutate(total = sum(count)) |> 
   mutate(porcentaje = count / total) 
+SEGURIDAD_SOCIAL
 
-# ---> CREATING NEW VARIABLES.
-# ---> PERTENECE AL RÉGIMEN SUBSIDIADO?
-train_dataset <- train_dataset |> 
-  mutate(regimen_subsidiado = as.numeric(case_when(P6100 == 3 ~ 1, TRUE ~ 0))) ;rm(SEGURIDAD_SOCIAL)
+# --->  DESCRIPTION OF JOB TYPE
+JOB_TYPE_NA_ <- train_dataset |> 
+  group_by(age_group) |> 
+  summarise(
+    na_count = sum(is.na(P6430)),
+    .groups = "drop"
+  ) |> 
+  mutate(
+    total_na = sum(na_count),
+    porcentaje = round(na_count / total_na * 100, 2)
+  )
+kable(JOB_TYPE_NA_, format = "latex", digits = 2, caption = "Distribution of Missing Job Type (P6430) by Age Group")
+rm(JOB_TYPE_NA_) 
 
-# ---> INFORMAL WORKER
+
 JOB_TYPE <- train_dataset |> 
+  filter(!is.na(P6430)) |> 
   group_by(age_group, P6430) |> 
-  summarise(count = sum(is.na(P6430)), .groups = "drop_last") |> 
+  summarise(count = n(), .groups = "drop") |> 
   ungroup() |> 
   mutate(total = sum(count)) |> 
-  mutate(porcentaje = round(count / total, 2))
+  mutate(porcentaje = round(count / total * 100, 2))
 write_csv(JOB_TYPE, "JOB_TYPE.csv")
-#rm(JOB_TYPE) 
+rm(JOB_TYPE) 
+
 
 # -- 37% of the MISSING VALUES are between 18-65 AGE groups.
 train_dataset <- train_dataset %>%
@@ -100,6 +113,29 @@ train_dataset <- train_dataset %>%
       TRUE ~ 0
     )
   )
+
+# --->  DESCRIPTION OF EDUCATION
+EDUCATION <- train_hogares %>%
+  group_by(P6210, Ocupado) %>%
+  summarise(count = n(), .groups = "drop") %>%
+  group_by(Ocupado) %>%
+  mutate(percent = 100 * count / sum(count))
+
+ggplot(EDUCATION, aes(x = factor(P6210), y = percent, fill = factor(Ocupado))) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(
+    title = "Distribution of P6210 by Employment Status",
+    x = "P6210",
+    y = "Percentage",
+    fill = "Ocupado"
+  ) +
+  theme_minimal()
+
+
+# ------------------------ CREATING NEW VARIABLES-------------------------------
+# ---> PERTENECE AL RÉGIMEN SUBSIDIADO?
+train_dataset <- train_dataset |> 
+  mutate(regimen_subsidiado = as.numeric(case_when(P6100 == 3 ~ 1, TRUE ~ 0))) ;rm(SEGURIDAD_SOCIAL)
 
 # ----> Overcrowding (Hacinamiento)
 train_dataset <- train_dataset |>
