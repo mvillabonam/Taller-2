@@ -28,9 +28,6 @@ Contains datasets required for running the scripts:
 - Testing datasets
 - Auxiliary data files
 
-### Other Files
-- `.RData`: R workspace data
-- `.Rhistory`: R command history
 
 ## Project Description
 
@@ -39,9 +36,11 @@ This project implements multiple machine learning models to predict poverty stat
 ## Models Implemented
 
 The repository includes several classification algorithms:
+- Logistic Regression
+- Boosting (GBoost-XGBoost)
 - Random Forest
 - Naive Bayes
-- Additional models (Logistic Regression, Decision Trees, etc.)
+- Elastic Net
 
 ## How to Use
 
