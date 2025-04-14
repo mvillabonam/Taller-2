@@ -753,7 +753,7 @@ aucval_XGboost
 ## 8. Naive Bayes
 ```{r, echo=FALSE}
 set.seed(456)
-k <- 5
+k <- 10
 
 # Creating folds
 folds <- cut(seq(1, nrow(train_dataset)), breaks = k, labels = FALSE)
@@ -800,6 +800,60 @@ write.csv(submission, "NB_laplace_0_kernel_FALSE_vars_13.csv", row.names = FALSE
 
 # Verify the format
 head(submission)
+```
+
+```{r, echo=FALSE}
+#------ Model 2
+set.seed(456)
+k <- 10
+
+# Creating folds
+folds <- cut(seq(1, nrow(train_dataset)), breaks = k, labels = FALSE)
+
+#Metrics
+f1_scores <- numeric(k)
+
+#Predictors
+predictors <- c("tasa_dependencia", "Nper", "median_education", "hacinamiento", 
+                "costo_vivienda", "vulnerabilidad", "edad_jefe","recibe_subsidios",
+                "num_dependientes", "recibe_remesas", "num_dormitorios","informal")
+
+
+# Loop de cross-validation
+for(i in 1:k){
+  test_indexes <- which(folds == i, arr.ind = TRUE)
+  fold_test <- train_dataset[test_indexes, ]
+  fold_train <- train_dataset[-test_indexes, ]
+  
+  nb_model2 <- naiveBayes(fold_train[, predictors], fold_train$Pobre)
+  
+  preds <- predict(nb_model, fold_test[, predictors])
+  
+  cm <- confusionMatrix(preds, fold_test$Pobre, positive = "Pobre")
+  prec <- cm$byClass["Pos Pred Value"]
+  rec  <- cm$byClass["Sensitivity"]
+  f1 <- 2 * prec * rec / (prec + rec)
+  f1_scores[i] <- f1
+}
+
+# F1
+cat("F1 Score", k, "folds:", round(mean(f1_scores), 4), "\n")
+
+# Predictions
+test_preds_2 <- predict(nb_model2, test_dataset[, predictors])
+test_preds_numeric <- ifelse(test_preds_2 == "Pobre", 1, 0)
+
+# Submission
+submission <- data.frame(
+  id = test_dataset$id,
+  Pobre = test_preds_numeric
+)
+write.csv(submission, "NB_laplace_0_kernel_FALSE_vars_13.csv", row.names = FALSE)
+
+# Verify the format
+head(submission)
+```
+
 ```
 ## 9. LDA/QDA
 ```{r LDA/QDA/RDA}
