@@ -1,0 +1,910 @@
+---
+title: "Taller 2 - G7"
+author: "Grupo 7"
+date: "2025-04-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+require(pacman)
+p_load(
+  readxl,         # Read excel files
+  tidyverse,      # Tidy data  
+  skimr,          # Data summary  
+  ranger,
+  caret,         # Entrenamiento y evaluacion de modelos
+  doParallel,     # Paralelizacion
+  MLeval,         # Funciones para evaluar modelos con métricas gráficos.
+  MLmetrics,     # Colección de métricas de evaluación para modelos de machine learning.
+  pROC,
+  rpart,
+  rpart.plot,
+  gbm,
+  MLmetrics,     # Colección de métricas de evaluación para modelos de machine learning.
+  pROC,
+  adabag,
+  e1071,
+  ranger,         # Para bagging y random forest
+  randomForest,   # Para random forest
+  Metrics,        # Evaluation Metrics for ML
+  adabag,
+  gbm,            # Gradient Boosting
+  xgboost,        # XGBoosting
+  pROC,           # ROC curve
+  ParBayesianOptimization, # Selecting parameters on XGBoost
+  doParallel, # Paralellize data proccessing 
+  gridExtra,
+  corrplot,
+  stargazer
+)
+```
+
+## Carga de los datos 
+```{r Reading poverty files}
+train_dataset <- readRDS("train_dataset.rds")
+test_dataset <- readRDS("test_dataset.rds")
+# Pobre as a factor 
+train_dataset <- train_dataset %>%
+  mutate(Pobre = factor(Pobre, levels = c(1, 0), labels = c("Pobre", "No_pobre")))
+
+train_dataset |> summary()
+
+
+
+
+```
+
+## Exploración de datos
+
+```{r, echo=FALSE}
+skim(train_dataset)
+skim(test_dataset)
+
+train_dataset$actividad_jefe[is.na(train_dataset$actividad_jefe)] <- 6
+
+test_dataset$num_ocupados[is.na(test_dataset$num_ocupados)] <- "mas_de_8"
+
+test_dataset$actividad_jefe[is.na(test_dataset$actividad_jefe)] <- 6
+
+test_dataset <- test_dataset |> 
+  mutate(actividad_jefe = ifelse(is.na(actividad_jefe),"6", actividad_jefe))
+```
+
+```{r}
+ggplot(train_dataset, aes(x = Pobre, fill = Pobre)) +
+  geom_bar() + 
+  theme_minimal() +  
+  scale_fill_manual(values = c("Pobre" = "orange", "No_pobre"= "blue")) +  
+  labs(x = "", y = "# de Personas")  
+
+```
+
+```{r Creating metric function}
+multiStats <- function(...) c(twoClassSummary(...), defaultSummary(...), prSummary(...), multiClassSummary(...))
+
+# ESTABLECIENDO EL CONTROL ---> PERMITIENDO PARALELIZACIÓN DE NÚCLEOS
+num_cores <- parallel::detectCores() - 1
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+
+ctrl <- trainControl(
+  method = "cv",        
+  number = 5,             
+  classProbs = TRUE,
+  summaryFunction = multiStats,
+  verboseIter = TRUE,
+  allowParallel = TRUE    
+)
+```
+```{r Descritive Statistics}
+
+#  Cross-tabulations for key relationships
+
+poverty_vulnerability <- table(train_dataset$Pobre, train_dataset$vulnerabilidad)
+print(poverty_vulnerability_table)
+print(prop.table(poverty_vulnerability_table, margin = 1)) 
+
+poverty_informal <- table(train_dataset$Pobre, train_dataset$informal)
+print(poverty_informal_table)
+print(prop.table(poverty_informal_table, margin = 1)) 
+
+poverty_education <- table(train_dataset$Pobre, train_dataset$max_educ_hogar)
+print(poverty_education_table)
+print(prop.table(poverty_education_table, margin = 1)) 
+```
+## 1. Logistic Regression
+```{r}
+# Identificacion de variables 
+
+ctrl_rfe <- rfeControl(
+  functions = lrFuncs,  
+  method = "cv",             
+  number = 10,                
+  verbose = FALSE
+)
+
+ctrl_rfe$functions$summary <- multiStats
+
+set.seed(1231)
+
+rfe_logit <- rfe(x = model.matrix(Pobre ~ . - 1, data = train_dataset[, -c(1,3,8,9,10,11,13)]),
+                 y = train_dataset$Pobre,
+                 metric = "F1",
+                 rfeControl = ctrl_rfe,
+                 sizes = seq(5, 30, by = 5), 
+                 maximize = TRUE)
+
+
+# Control para train
+ctrl <- trainControl(method = "cv",
+                     number = 5,
+                     summaryFunction = multiStats,
+                     classProbs = TRUE,
+                     verbose = FALSE,
+                     savePredictions = TRUE)
+# Entrenar con glm binomial
+set.seed(1231)
+
+x_variables <- c(colnames(train_dataset)[-c(1,3,8,9,10,11,13,14)])
+
+glm_caret <- train(formula(paste0("Pobre ~", paste0(x_variables, collapse = " + "))),
+                   data = train_dataset,
+                   method = "glm",
+                   trControl = ctrl,
+                   family = "binomial")
+
+```
+
+
+```{r}
+set.seed(1231)
+
+model_2 <- c("median_education", "costo_vivienda", "recibe_subsidios",
+             "num_cuartos","num_ocupados", "vulnerabilidad", "regimen_subsidiado",
+             "hacinamiento", "num_dependientes", "Nper", "recibe_remesas", "tipo_posesion","int_subempleo")
+
+
+logit_2 <- train(formula(paste0("Pobre ~", paste0(model_2, collapse = " + "))),
+                   data = train_dataset,
+                   method = "glm",
+                   trControl = ctrl,
+                   family = "binomial")
+
+prediction = predict(logit_2, newdata = test_dataset)
+
+results_2 = data.frame("id"= test_dataset$id, 
+                       "pobre"= ifelse(predict(logit_2, newdata = test_dataset, type = "raw") =="Pobre", 1,0))
+
+write.csv(results_2,"LGIT.csv", row.names = FALSE)
+glm_caret
+```
+
+
+```{r}
+
+set.seed(1231)
+
+model_3 <- c("median_education", "costo_vivienda", "recibe_subsidios",
+             "num_cuartos","num_ocupados", "vulnerabilidad", "regimen_subsidiado",
+             "hacinamiento", "num_dependientes", "Nper", "recibe_remesas", "tipo_posesion","int_subempleo", "Clase", "ing_nomonet", "tasa_dependencia")
+
+train_dataset2 <- train_dataset |> 
+  filter(Dominio != "BOGOTA")
+
+logit_3 <- train(formula(paste0("Pobre ~", paste0(model_3, collapse = " + "))),
+                   data = train_dataset2,
+                   method = "glm",
+                   trControl = ctrl,
+                   family = "binomial")
+```
+
+
+## 3. Elastic Net 
+
+```{r}
+# EN sin desbalance de clases (modelo 3)
+grid <- expand.grid(
+  alpha = seq(0, 1, by = 0.25),  
+  lambda = 10^seq(-6, -2, length = 10)  
+)
+
+grid_refinada <- expand.grid(
+  alpha = seq(0.25, 0.55, by = 0.05), 
+  lambda = 10^seq(-6, -4, length = 20)
+)
+
+set.seed(1231) 
+
+EN_logit_1 <- train(
+    formula(paste0("Pobre ~", paste0(model_3, collapse = " + "))), 
+    method = "glmnet",  
+    data = train_dataset2,  
+    family = "binomial",  
+    tuneGrid = grid_refinada,  
+    preProcess = c("center", "scale"),
+    trControl = ctrl,
+    metric = "F1")
+
+# alpha = 0.45; lambda = 1e-04
+
+set.seed(1231) 
+
+EN_logit_1 <- train(
+    formula(paste0("Pobre ~", paste0(model_3, collapse = " + "))), 
+    method = "glmnet",  
+    data = train_dataset2,  
+    family = "binomial",  
+    tuneGrid = expand.grid(alpha = 0.45, lambda = 1e-04),  
+    preProcess = c("center", "scale"),
+    trControl = ctrl,
+    metric = "F1")
+
+EN_logit_1
+
+prediction = predict(EN_logit_1, newdata = test_dataset)
+
+results_2 = data.frame("id"= test_dataset$id, 
+                       "pobre"= ifelse(predict(EN_logit_1, newdata = test_dataset, type = "raw") =="Pobre", 1,0))
+
+write.csv(results_2,"EN_.csv", row.names = FALSE)
+```
+
+
+
+```{r}
+# Alternative cutoff (modelo 2)
+roc_obj_en<-roc(response = EN_logit_1$pred$obs,  # Valores reales de la variable objetivo
+                predictor= EN_logit_1$pred$Pobre, # Probabilidades predichas por el modelo
+                levels = c("No_pobre", "Pobre"),  # 
+                direction = "<")  # "<" "Pobre" es positivo
+
+rfThresh_en <- coords(roc_obj_en, x = "best", best.method = "closest.topleft")
+rfThresh_en
+
+prec_recall<-data.frame(coords(roc_obj_en, seq(0,1,length=100), ret=c("threshold", "precision", "recall")))
+
+prec_recall<- prec_recall  |>  mutate(F1=(2*precision*recall)/(precision+recall))
+prec_recall
+
+prec_recall$threshold[which.max(prec_recall$F1)]
+
+results_2 = data.frame("id"= test_dataset$id, 
+                       "pobre"= factor(
+                         ifelse(
+                           predict(
+                             EN_logit_1, newdata = test_dataset,
+                             type = "prob")$Pobre >=
+                             prec_recall$threshold[which.max(prec_recall$F1)],1,0),
+                                                                 levels = c(1,0), labels = c("Pobre","No_pobre"))) |> 
+  mutate(pobre = case_when(
+    pobre == "No_pobre" ~ 0,
+    pobre == "Pobre" ~ 1
+  ))
+
+write.csv(results_2,"EN_lambda_1_e04_alpha_045.csv", row.names = FALSE)
+```
+
+
+```{r}
+# SMOTE 
+
+ctrl <- trainControl(method = "cv",
+                     number = 5,
+                     summaryFunction = multiStats,
+                     classProbs = TRUE,
+                     verbose = FALSE,
+                     savePredictions = TRUE, 
+                     sampling = "smote")
+
+Logit_2_smote <- train(
+     formula(paste0("Pobre ~", paste0(model_3, collapse = " + "))), 
+     method = "glmnet",  
+     data = train_dataset2,  
+     family = "binomial",  
+     trControl = ctrl,
+     metric = "F1", 
+       )
+
+roc_obj_en<-roc(response = Logit_2_smote$pred$obs[Logit_2_smote$pred$lambda == Logit_2_smote$bestTune$lambda],  # Valores reales de la variable objetivo
+                predictor= Logit_2_smote$pred$Pobre[Logit_2_smote$pred$lambda == Logit_2_smote$bestTune$lambda], # Probabilidades predichas por el modelo
+                levels = c("No_pobre", "Pobre"),  #  
+                direction = "<")  # "<" "Pobre" es positivo
+
+rfThresh_en <- coords(roc_obj_en, x = "best", best.method = "closest.topleft")
+rfThresh_en
+
+prec_recall<-data.frame(coords(roc_obj_en, seq(0,1,length=100), ret=c("threshold", "precision", "recall")))
+
+prec_recall<- prec_recall  |>  mutate(F1=(2*precision*recall)/(precision+recall))
+prec_recall
+
+prec_recall$threshold[which.max(prec_recall$F1)]
+
+results_2 = data.frame("id"= test_dataset$id, 
+                       "pobre"= factor(
+                         ifelse(
+                           predict(
+                             Logit_2_smote, newdata = test_dataset,
+                             type = "prob")$Pobre >=
+                             prec_recall$threshold[which.max(prec_recall$F1)],1,0),
+                                                                 levels = c(1,0), labels = c("Pobre","No_pobre"))) |> 
+  mutate(pobre = case_when(
+    pobre == "No_pobre" ~ 0,
+    pobre == "Pobre" ~ 1
+  ))
+
+write.csv(results_2,"EN_lambda_1_e04_alpha_045.csv", row.names = FALSE)
+```
+
+## 3. CARTs
+
+```{r}
+my_tree <- rpart(formula(paste0("Pobre ~", paste0(model_3, collapse = " + "))),data= train_dataset2, control = list(maxdepth = 50))
+prp(my_tree)
+
+fitControl<-trainControl(method ="cv",
+                         number=5, 
+                         summaryFunction = multiStats,
+                         classProbs = TRUE)
+
+set.seed(1231)
+
+tree_rpart2 <- train(
+    formula(paste0("Pobre ~", paste0(model_3, collapse = "+"))),
+    data=train_dataset2,
+    method = "rpart2",
+    trControl = fitControl,
+    metric = "F1",
+    tuneGrid = expand.grid(maxdepth = seq(1,15,1)))
+
+set.seed(1231)
+
+tree_rpart3 <- train(
+    formula(paste0("Pobre ~", paste0(model_3, collapse = "+"))),
+    data=train_dataset2,
+    method = "rpart",
+    trControl = fitControl,
+    metric = "F1",
+    tuneLength = 20)
+
+```
+
+
+## 4. Random Forest
+```{r, echo=FALSE}
+predictors <- c("tasa_dependencia", "nper", "median_education", "hacinamiento", 
+                "costo_vivienda", "vulnerabilidad", "edad_jefe")
+
+# Train the model using ranger
+set.seed(42)
+rf_model_1 <- ranger(
+  Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+          costo_vivienda + vulnerabilidad + edad_jefe,
+  data = train_dataset,
+  num.trees = 500,
+  mtry = floor(sqrt(length(predictors))),
+  importance = 'impurity',
+  probability = FALSE,
+  classification = TRUE
+)
+
+# Variable importance
+var_importance <- importance(rf_model_1)
+var_importance_df <- data.frame(
+  Variable = names(var_importance),
+  Importance = var_importance
+)
+
+print(var_importance_df[order(-var_importance_df$Importance),])
+print(rf_model_1)
+#We got a OOB prediction error of 14,18%, lets check if we can improve this. 
+
+mtry_values <- c(2, 3, 4, 5)
+best_oob_error <- Inf
+best_mtry <- NULL
+
+for(m in mtry_values) {
+  temp_model <- ranger(
+    Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+          costo_vivienda + vulnerabilidad + edad_jefe,
+    data = train_dataset,
+    num.trees = 500,
+    mtry = m,
+    importance = 'impurity',
+    classification = TRUE
+  )
+  
+  oob_error <- temp_model$prediction.error
+  cat("mtry =", m, "OOB error rate =", oob_error, "\n")
+  
+  if(oob_error < best_oob_error) {
+    best_oob_error <- oob_error
+    best_mtry <- m
+  }
+}
+
+cat("Best mtry value:", best_mtry, "with OOB error:", best_oob_error, "\n")
+#Best mtry value: 2 with OOB error: 0.1417374 
+
+final_model_1 <- ranger(
+   Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+          costo_vivienda + vulnerabilidad + edad_jefe,
+  data = train_dataset,
+  num.trees = 500,
+  mtry = best_mtry,
+  importance = 'impurity',
+  classification = TRUE
+)
+
+print(final_model_1)
+
+# Make predictions on the test set
+test_predictions <- predict(final_model_1, data = test_dataset)
+
+train_preds_oob <- predict(final_model_1, data = train_dataset)$predictions
+conf_matrix <- table(Predicted = train_preds_oob, Actual = train_dataset$Pobre)
+print(conf_matrix)
+
+# Calculate metrics using OOB predictions
+true_pos <- conf_matrix["Pobre", "Pobre"]
+false_pos <- conf_matrix["Pobre", "No_pobre"]
+false_neg <- conf_matrix["No_pobre", "Pobre"]
+
+precision <- true_pos / (true_pos + false_pos)
+recall <- true_pos / (true_pos + false_neg)
+f1 <- 2 * precision * recall / (precision + recall)
+
+cat("OOB Performance Metrics:\n")
+cat("Precision:", precision, "\n")
+cat("Recall:", recall, "\n")
+cat("F1 Score:", f1, "\n")
+
+# Create submission dataframe
+submission <- data.frame(
+  id = test_dataset$id,
+  Pobre = ifelse(test_predictions$predictions == "Pobre", 1, 0)
+)
+
+write.csv(submission, "RF_mtry_2.csv", row.names = FALSE, quote = FALSE)
+head(submission)
+```
+```{r}
+# ----> Model 2
+predictors <- c("tasa_dependencia", "Nper", "median_education", "hacinamiento", 
+                "costo_vivienda", "vulnerabilidad", "edad_jefe","recibe_subsidios",
+                "num_dependientes", "recibe_remesas", "num_dormitorios","informal")
+
+rf_model_2 <- ranger(
+  Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+          costo_vivienda + vulnerabilidad + edad_jefe+recibe_subsidios+
+                num_dependientes+recibe_remesas+num_dormitorios+informal,
+  data = train_dataset,
+  num.trees = 500,
+  mtry = floor(sqrt(length(predictors))),
+  importance = 'impurity',
+  probability = FALSE,
+  classification = TRUE
+)
+
+for(m in mtry_values) {
+  temp_model <- ranger(
+    Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+          costo_vivienda + vulnerabilidad + edad_jefe,
+    data = train_dataset,
+    num.trees = 500,
+    mtry = m,
+    importance = 'impurity',
+    classification = TRUE
+  )
+  
+  oob_error <- temp_model$prediction.error
+  cat("mtry =", m, "OOB error rate =", oob_error, "\n")
+  
+  if(oob_error < best_oob_error) {
+    best_oob_error <- oob_error
+    best_mtry <- m
+  }
+}
+
+cat("Best mtry value:", best_mtry, "with OOB error:", best_oob_error, "\n")
+#Best mtry value: 3
+
+final_model_1 <- ranger(
+   Pobre ~ tasa_dependencia + Nper + median_education + hacinamiento + 
+          costo_vivienda + vulnerabilidad + edad_jefe,
+  data = train_dataset,
+  num.trees = 500,
+  mtry = best_mtry,
+  importance = 'impurity',
+  classification = TRUE
+)
+
+print(final_model_2)
+test_predictions <- predict(final_model_2, data = test_dataset)
+
+
+submission <- data.frame(
+  id = test_dataset$id,
+  Pobre = ifelse(test_predictions$predictions == "Pobre", 1, 0)
+)
+
+write.csv(submission, "RF_mtry_3.csv", row.names = FALSE, quote = FALSE)
+head(submission)
+```
+
+## 5. ADA Boost
+```{r, echo=FALSE}
+
+set.seed(123)  # For reproducibility
+adaboost_model <- boosting(
+  Pobre ~ vulnerabilidad,
+  data = train_dataset,
+  mfinal = 2,
+  control = rpart.control(maxdepth = 3)
+)
+
+print(adaboost_model)
+```
+
+## 6. Grad Boost
+
+```{r}
+grid_gbm <- expand.grid(
+  n.trees = c(300, 500, 1000),
+  interaction.depth = c(2, 4, 6),
+  shrinkage = c(0.001, 0.005, 0.01),
+  n.minobsinnode = c(10, 20)
+)
+
+
+grid_gbm
+
+
+fitControl <- trainControl(
+  method = "cv",
+  number = 5,
+  classProbs = TRUE,
+  summaryFunction = multiStats,  # La función que ya armaste antes
+  savePredictions = "final"
+)
+
+
+set.seed(1231)
+gbm_tree <- train(formula(paste0("Pobre ~", paste0(model_3, collapse = "+"))),
+                  data=train_dataset2,
+                  method = "gbm", 
+                  trControl = fitControl,
+                  tuneGrid=grid_gbm,
+                  verbose = FALSE)
+
+
+
+
+```
+
+
+## 7. XGBoost
+```{r XGBOOST}
+# OPTIMIZANDO SELECCIÓN DE PARÁMETROS 
+# Evauar resultados del ejercicio 
+fiveStats <- function(...) {
+  c(
+    caret::twoClassSummary(...), # Returns ROC, Sensitivity, Specificity
+    caret::defaultSummary(...)  # RMSE, R-squared/Accuracy and Kappa 
+  )
+}
+#------------------- PREPARING DATA---------------------------------------------
+selected_data <- train_dataset %>%
+  mutate(across(
+    .cols = -c(id, Clase, Dominio),
+    .fns = ~ {
+      # Try to convert to numeric after replacing NAs with 0
+      if (is.numeric(.)) {
+        replace_na(., 0)
+      } else {
+        suppressWarnings(as.numeric(replace_na(., "0")))
+      }
+    }
+  ))
+# -------------------------- HIPERPARAMETERS -----------------------------------
+# HIPERPARÁMETROS: # árboles, profundidad, mínimo de observaciones x nodo, tasa de                     aprendizaje,  nivel mínimo de reducción en la función de                            pérdida, porcentaje de la muestra para entrenar (subsample)
+
+x_variables <- c(colnames(train_dataset)[-c(1,2,3,8,9,10,11,13,14)])
+X <- as.matrix(selected_data[, x_variables])
+y <- selected_data$Pobre  # Or whatever your target column is
+y <- ifelse(selected_data$Pobre == 2, 1,0)
+# 2. DMatrix
+dtrain <- xgb.DMatrix(data = X, label = y)
+
+# 3. Create custom folds
+Folds <- list(
+  Fold1 = as.integer(seq(1, nrow(X), by = 3)),
+  Fold2 = as.integer(seq(2, nrow(X), by = 3)),
+  Fold3 = as.integer(seq(3, nrow(X), by = 3))
+)
+
+# 4. Set parameters
+params <- list(
+  objective = "binary:logistic", # or "multi:softprob" if multiclass
+    eval_metric = "auc"        # can change to "auc", etc.
+)
+
+scoringFunction <- function(max_depth, min_child_weight, subsample) {
+  dtrain_local <- xgb.DMatrix(data = X, label = y)  # X and y from global
+  Pars <- list( 
+    booster = "gbtree",
+    eta = 0.001,
+    max_depth = max_depth,
+    min_child_weight = min_child_weight,
+    subsample = subsample,
+    objective = "binary:logistic",
+    eval_metric = "auc"
+  )
+
+  xgbcv <- xgb.cv(
+    params = Pars,
+    data = dtrain_local,
+    nrounds = 100,
+    folds = Folds,
+    early_stopping_rounds = 5,
+    maximize = TRUE,
+    verbose = 0
+  )
+
+  return(list(
+    Score = max(xgbcv$evaluation_log$test_auc_mean),
+    nrounds = xgbcv$best_iteration
+  ))
+}
+
+bounds <- list( 
+    max_depth = c(1L, 20L)
+  , min_child_weight = c(0, 25)
+  , subsample = c(0.25, 1)
+)
+
+#---------------------------------- PARALELLALIZING ----------------------------
+cl <- makeCluster(3)
+registerDoParallel(cl)
+clusterExport(cl, c("X", "y", "Folds", "scoringFunction"))
+
+set.seed(0)
+tWithPar <- system.time(
+  optObj <- bayesOpt(
+    FUN = scoringFunction,
+    bounds = bounds,
+    initPoints = 4,
+    iters.n = 4,
+    iters.k = 2,
+    parallel = FALSE
+  )
+)
+stopCluster(cl)
+registerDoSEQ()
+
+optObj[["scoreSummary"]]
+getBestPars(optObj)
+
+#--------------------------------------------------------------------------------
+# Definiendo grilla
+grid_xbgoost <- expand.grid(nrounds = c(250,500),
+                            max_depth = c(5,15),
+                            eta = c(0.1,0.3), 
+                            gamma = c(0, 1), 
+                            min_child_weight =c(5),
+                            colsample_bytree = c(0.7), 
+                            subsample = c(0.5))
+
+
+set.seed(1231)
+# ---> PROBANDO EL MODELO
+train_dataset_clean <- train_dataset %>%
+  select(all_of(c("Pobre", x_variables))) %>%
+  na.omit()
+
+num_cores <- parallel::detectCores() - 1
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+
+formula_xgb <- as.formula(paste("Pobre ~", paste(x_variables, collapse = " + ")))
+Xgboost_tree <- train(formula_xgb,
+  data = train_dataset_clean, 
+  method = "xgbTree", 
+  trControl = ctrl,
+  tuneGrid=grid_xbgoost,
+  metric = "ROC",
+  verbosity = 0
+)         
+Xgboost_tree
+
+# PREDICTIONS 
+test_predictions <- predict(Xgboost_tree,
+                     newdata = test_dataset, 
+                     type = "prob")
+predicted_class <- ifelse(test_predictions$Pobre > 0.5, 1, 0)
+
+submission <- data.frame(
+  id = test_dataset$id,
+  Pobre = predicted_class
+)
+
+# ENTREGA 3
+write.csv(submission, "XGBOOST.csv", row.names = FALSE, quote = FALSE)
+
+# GRAPHIC OF THE THREE
+tree_plot <- xgboost::xgb.plot.tree(
+  model = Xgboost_tree$finalModel,
+  trees = 1:2,
+  plot_width = 2000,
+  plot_height = 1000)
+tree_plot
+
+# Verify the format
+head(submission)
+
+# GRAPHIC OF THE THREE
+aucval_XGboost <- Metrics::auc(actual = default,predicted = pred_prob[,2])
+aucval_XGboost 
+
+```
+
+## 8. Naive Bayes
+```{r, echo=FALSE}
+set.seed(456)
+k <- 10
+
+# Creating folds
+folds <- cut(seq(1, nrow(train_dataset)), breaks = k, labels = FALSE)
+
+#Metrics
+f1_scores <- numeric(k)
+
+#Predictors
+predictors <-  c("median_education", "costo_vivienda", "recibe_subsidios",
+             "num_cuartos","num_ocupados", "vulnerabilidad", "regimen_subsidiado",
+             "hacinamiento", "num_dependientes", "Nper", "recibe_remesas", "tipo_posesion","int_subempleo")
+
+
+# Loop de cross-validation
+for(i in 1:k){
+  test_indexes <- which(folds == i, arr.ind = TRUE)
+  fold_test <- train_dataset[test_indexes, ]
+  fold_train <- train_dataset[-test_indexes, ]
+  
+  nb_model <- naiveBayes(fold_train[, predictors], fold_train$Pobre)
+  
+  preds <- predict(nb_model, fold_test[, predictors])
+  
+  cm <- confusionMatrix(preds, fold_test$Pobre, positive = "Pobre")
+  prec <- cm$byClass["Pos Pred Value"]
+  rec  <- cm$byClass["Sensitivity"]
+  f1 <- 2 * prec * rec / (prec + rec)
+  f1_scores[i] <- f1
+}
+
+# F1
+cat("F1 Score", k, "folds:", round(mean(f1_scores), 4), "\n")
+
+# Predictions
+test_preds_2 <- predict(nb_model, test_dataset[, predictors])
+test_preds_numeric <- ifelse(test_preds_2 == "Pobre", 1, 0)
+
+# Submission
+submission <- data.frame(
+  id = test_dataset$id,
+  Pobre = test_preds_numeric
+)
+write.csv(submission, "NB_laplace_0_kernel_FALSE_vars_13.csv", row.names = FALSE)
+
+# Verify the format
+head(submission)
+```
+
+```{r, echo=FALSE}
+#------ Model 2
+set.seed(456)
+k <- 10
+
+# Creating folds
+folds <- cut(seq(1, nrow(train_dataset)), breaks = k, labels = FALSE)
+
+#Metrics
+f1_scores <- numeric(k)
+
+#Predictors
+predictors <- c("tasa_dependencia", "Nper", "median_education", "hacinamiento", 
+                "costo_vivienda", "vulnerabilidad", "edad_jefe","recibe_subsidios",
+                "num_dependientes", "recibe_remesas", "num_dormitorios","informal")
+
+
+# Loop de cross-validation
+for(i in 1:k){
+  test_indexes <- which(folds == i, arr.ind = TRUE)
+  fold_test <- train_dataset[test_indexes, ]
+  fold_train <- train_dataset[-test_indexes, ]
+  
+  nb_model2 <- naiveBayes(fold_train[, predictors], fold_train$Pobre)
+  
+  preds <- predict(nb_model, fold_test[, predictors])
+  
+  cm <- confusionMatrix(preds, fold_test$Pobre, positive = "Pobre")
+  prec <- cm$byClass["Pos Pred Value"]
+  rec  <- cm$byClass["Sensitivity"]
+  f1 <- 2 * prec * rec / (prec + rec)
+  f1_scores[i] <- f1
+}
+
+# F1
+cat("F1 Score", k, "folds:", round(mean(f1_scores), 4), "\n")
+
+# Predictions
+test_preds_2 <- predict(nb_model2, test_dataset[, predictors])
+test_preds_numeric <- ifelse(test_preds_2 == "Pobre", 1, 0)
+
+# Submission
+submission <- data.frame(
+  id = test_dataset$id,
+  Pobre = test_preds_numeric
+)
+write.csv(submission, "NB_laplace_0_kernel_FALSE_vars_13.csv", row.names = FALSE)
+
+# Verify the format
+head(submission)
+```
+
+```
+## 9. LDA/QDA
+```{r LDA/QDA/RDA}
+## LDA: LINEAR DISCRIMINANT ANALYSIS (LDA)
+x_variables <- c("RURAL", "recibe_subsidios","vulnerabilidad",
+                 "regimen_subsidiado","hacinamiento")
+
+set.seed(1410)
+default_lda = train(formula(paste0("Pobre ~", paste0(x_variables, collapse = " + "))), 
+                data=train_dataset, 
+                method="lda",
+                trControl = ctrl)
+default_lda$results$F1
+
+## QDA: QUADRATIC DISCRIMINANT ANALYSIS (LDA)
+set.seed(1410)
+default_qda = train(formula(paste0("Pobre ~", paste0(x_variables, collapse = " + "))), 
+                data=train_dataset, 
+                method="qda",
+                trControl = ctrl)
+default_qda$results$F1
+
+## RDA: REGULARIZED DISCRIMINANT ANALYSI. ADDS SHRINKAGE TO STABILIZE COVARIANCE MATRIX
+rda_grid <- expand.grid(gamma = seq(0.1, 0.9, length = 5),
+                        lambda = seq(0.1, 0.9, length = 2))
+
+set.seed(1410)
+rda_model <- train(
+  formula(paste0("Pobre ~", paste0(x_variables, collapse = " + "))),
+  data = train_dataset,
+  method = "rda",
+  trControl = ctrl,
+  tuneGrid = rda_grid
+)
+rda_model$results$F1
+```
+
+
+## 10. Naive Bayes
+
+## 11. KNN
+
+```{r pressure, echo=FALSE}
+set.seed(1410)
+default_knn <- train(
+  formula(paste0("Pobre ~", paste0(x_variables, collapse = " + "))), 
+  data = train_dataset %>% drop_na(Pobre, all_of(x_variables)),
+  method = "knn",  
+  tuneGrid = expand.grid(k = seq(3, 15, by = 2)), 
+  trControl = ctrl,
+  preProcess = c("center", "scale")  # optional but recommended for KNN
+)
+```
+
