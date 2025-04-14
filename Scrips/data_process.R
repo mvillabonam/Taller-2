@@ -105,6 +105,9 @@ rm(JOB_TYPE)
 
 
 # -- 37% of the MISSING VALUES are between 18-65 AGE groups.
+train_dataset <- train_dataset |> 
+  mutate(regimen_subsidiado = as.numeric(case_when(P6100 == 3 ~ 1, TRUE ~ 0))) ;rm(SEGURIDAD_SOCIAL)
+
 train_dataset <- train_dataset %>%
   mutate(
     informal = case_when(
@@ -115,21 +118,41 @@ train_dataset <- train_dataset %>%
   )
 
 # --->  DESCRIPTION OF EDUCATION
-EDUCATION <- train_hogares %>%
-  group_by(P6210, Ocupado) %>%
+education_labels <- c(
+  "1" = "None",
+  "2" = "Preschool",
+  "3" = "Primary",
+  "4" = "Secondary",
+  "5" = "High School",
+  "6" = "Higher/University",
+  "9" = "Unknown/Not Reported"
+)
+EDUCATION <- train_personas %>%
+  group_by(P6210, Oc) %>%
   summarise(count = n(), .groups = "drop") %>%
-  group_by(Ocupado) %>%
-  mutate(percent = 100 * count / sum(count))
+  mutate(
+    percent = 100 * count / sum(count),
+    education = factor(education_labels[as.character(P6210)],
+                       levels = education_labels),
+    employment_status = case_when(
+      Oc == 1 ~ "Occupied",
+      Oc == 0 ~ "",
+      is.na(Oc) ~ "Not Occupied"
+    )
+  )
 
-ggplot(EDUCATION, aes(x = factor(P6210), y = percent, fill = factor(Ocupado))) +
+# Plot
+ggplot(EDUCATION, aes(x = education, y = percent, fill = employment_status)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(
-    title = "Distribution of P6210 by Employment Status",
-    x = "P6210",
-    y = "Percentage",
-    fill = "Ocupado"
+    x = "Highest Educational Attainment",
+    y = "%",
+    fill = "Employment Status"
   ) +
-  theme_minimal()
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# --->  DESCRIPTION OF EDUCATION
 
 
 # ------------------------ CREATING NEW VARIABLES-------------------------------

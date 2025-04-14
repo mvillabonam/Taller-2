@@ -51,9 +51,6 @@ train_dataset <- train_dataset %>%
 
 train_dataset |> summary()
 
-
-
-
 ```
 
 ## Exploración de datos
@@ -98,10 +95,10 @@ ctrl <- trainControl(
   allowParallel = TRUE    
 )
 ```
+
 ```{r Descritive Statistics}
 
 #  Cross-tabulations for key relationships
-
 poverty_vulnerability <- table(train_dataset$Pobre, train_dataset$vulnerabilidad)
 print(poverty_vulnerability_table)
 print(prop.table(poverty_vulnerability_table, margin = 1)) 
@@ -113,6 +110,7 @@ print(prop.table(poverty_informal_table, margin = 1))
 poverty_education <- table(train_dataset$Pobre, train_dataset$max_educ_hogar)
 print(poverty_education_table)
 print(prop.table(poverty_education_table, margin = 1)) 
+
 ```
 ## 1. Logistic Regression
 ```{r}
@@ -585,7 +583,7 @@ gbm_tree <- train(formula(paste0("Pobre ~", paste0(model_3, collapse = "+"))),
 
 
 ## 7. XGBoost
-```{r XGBOOST}
+```{r ParBayesianOptimization}
 # OPTIMIZANDO SELECCIÓN DE PARÁMETROS 
 # Evauar resultados del ejercicio 
 fiveStats <- function(...) {
@@ -608,8 +606,8 @@ selected_data <- train_dataset %>%
     }
   ))
 # -------------------------- HIPERPARAMETERS -----------------------------------
-# HIPERPARÁMETROS: # árboles, profundidad, mínimo de observaciones x nodo, tasa de                     aprendizaje,  nivel mínimo de reducción en la función de                            pérdida, porcentaje de la muestra para entrenar (subsample)
-
+# HIPERPARÁMETROS: # árboles, profundidad, mínimo de observaciones x nodo, tasa de aprendizaje,
+# nivel mínimo de reducción en la función de pérdida, porcentaje de la muestra para entrenar (subsample)
 x_variables <- c(colnames(train_dataset)[-c(1,2,3,8,9,10,11,13,14)])
 X <- as.matrix(selected_data[, x_variables])
 y <- selected_data$Pobre  # Or whatever your target column is
@@ -688,9 +686,9 @@ getBestPars(optObj)
 
 #--------------------------------------------------------------------------------
 # Definiendo grilla
-grid_xbgoost <- expand.grid(nrounds = c(250,500),
-                            max_depth = c(5,15),
-                            eta = c(0.1,0.3), 
+grid_xbgoost <- expand.grid(nrounds = c(500),
+                            max_depth = c(15),
+                            eta = c(0.01), 
                             gamma = c(0, 1), 
                             min_child_weight =c(5),
                             colsample_bytree = c(0.7), 
@@ -703,7 +701,7 @@ train_dataset_clean <- train_dataset %>%
   select(all_of(c("Pobre", x_variables))) %>%
   na.omit()
 
-num_cores <- parallel::detectCores() - 1
+num_cores <- parallel::detectCores()/2
 cl <- makeCluster(num_cores)
 registerDoParallel(cl)
 
@@ -746,7 +744,59 @@ head(submission)
 # GRAPHIC OF THE THREE
 aucval_XGboost <- Metrics::auc(actual = default,predicted = pred_prob[,2])
 aucval_XGboost 
+```
 
+```{r XGBOOST2}
+#- MODEL 2 ---------------------------------------------------------------------
+# Definiendo grilla
+grid_xbgoost <- expand.grid(nrounds = c(250,500),
+                            max_depth = c(18),
+                            eta = c(0.01), 
+                            gamma = c(0, 1), 
+                            min_child_weight =c(5),
+                            colsample_bytree = c(0.7), 
+                            subsample = c(0.5))
+
+
+set.seed(1231)
+num_cores <- parallel::detectCores()/2
+cl <- makeCluster(num_cores)
+registerDoParallel(cl)
+
+x_variables <- c("tasa_dependencia", "VULNERABILIDAD_LABORAL", "median_education", "hacinamiento", 
+                "vulnerabilidad", "RURAL","recibe_subsidios") 
+
+formula_xgb <- as.formula(paste("Pobre ~", paste(x_variables, collapse = " + ")))
+Xgboost_tree <- train(formula_xgb,
+  data = train_dataset_clean, 
+  method = "xgbTree", 
+  trControl = ctrl,
+  tuneGrid=grid_xbgoost,
+  metric = "ROC",
+  verbosity = 0
+)         
+Xgboost_tree
+
+# PREDICTIONS 
+test_predictions <- predict(Xgboost_tree,
+                     newdata = test_dataset, 
+                     type = "prob")
+predicted_class <- ifelse(test_predictions$Pobre > 0.3, 1, 0)
+
+submission <- data.frame(
+  id = test_dataset$id,
+  Pobre = predicted_class
+)
+
+write.csv(submission, "XGBOOST2.csv", row.names = FALSE, quote = FALSE)
+
+# GRAPHIC OF THE THREE
+tree_plot <- xgboost::xgb.plot.tree(
+  model = Xgboost_tree$finalModel,
+  trees = 1:2,
+  plot_width = 2000,
+  plot_height = 1000)
+tree_plot
 ```
 
 ## 8. Naive Bayes
@@ -853,18 +903,24 @@ write.csv(submission, "NB_laplace_0_kernel_FALSE_vars_13.csv", row.names = FALSE
 head(submission)
 ```
 
-```
-## 9. LDA/QDA
+## 9. LDA/QDA/RDA
 ```{r LDA/QDA/RDA}
-## LDA: LINEAR DISCRIMINANT ANALYSIS (LDA)
-x_variables <- c("RURAL", "recibe_subsidios","vulnerabilidad",
-                 "regimen_subsidiado","hacinamiento")
+ctrl <- trainControl(method = "cv",
+                     number = 5,
+                     summaryFunction = multiStats,
+                     classProbs = TRUE,
+                     verbose = FALSE,
+                     savePredictions = TRUE)
 
+## LDA: LINEAR DISCRIMINANT ANALYSIS (LDA)
+x_variables <- c(colnames(train_dataset)[-c(1,2,3,8,9,10,11,13,14)])
 set.seed(1410)
-default_lda = train(formula(paste0("Pobre ~", paste0(x_variables, collapse = " + "))), 
-                data=train_dataset, 
-                method="lda",
-                trControl = ctrl)
+default_lda <- train(
+  formula(paste0("Pobre ~", paste0(x_variables, collapse = " + "))),
+  data = train_dataset %>% drop_na(Pobre, all_of(x_variables)),
+  method = "lda",
+  trControl = ctrl
+)
 default_lda$results$F1
 
 ## QDA: QUADRATIC DISCRIMINANT ANALYSIS (LDA)
@@ -876,26 +932,24 @@ default_qda = train(formula(paste0("Pobre ~", paste0(x_variables, collapse = " +
 default_qda$results$F1
 
 ## RDA: REGULARIZED DISCRIMINANT ANALYSI. ADDS SHRINKAGE TO STABILIZE COVARIANCE MATRIX
-rda_grid <- expand.grid(gamma = seq(0.1, 0.9, length = 5),
-                        lambda = seq(0.1, 0.9, length = 2))
+#rda_grid <- expand.grid(gamma = seq(0.1, 0.9, length = 5),
+#                        lambda = seq(0.1, 0.9, length = 2))
 
-set.seed(1410)
-rda_model <- train(
-  formula(paste0("Pobre ~", paste0(x_variables, collapse = " + "))),
-  data = train_dataset,
-  method = "rda",
-  trControl = ctrl,
-  tuneGrid = rda_grid
-)
-rda_model$results$F1
+#set.seed(1410)
+#rda_model <- train(
+#  formula(paste0("Pobre ~", paste0(x_variables, collapse = " + "))),
+#  data = train_dataset,
+#  method = "rda",
+#  trControl = ctrl,
+#  tuneGrid = rda_grid
+#)
+#rda_model$results$F1
 ```
 
 
-## 10. Naive Bayes
-
-## 11. KNN
-
+## 10. KNN
 ```{r pressure, echo=FALSE}
+x_variables <- c(colnames(train_dataset)[-c(1,2,3,8,9,10,11,13,14)])
 set.seed(1410)
 default_knn <- train(
   formula(paste0("Pobre ~", paste0(x_variables, collapse = " + "))), 
