@@ -549,7 +549,6 @@ print(adaboost_model)
 ```
 
 ## 6. Grad Boost
-
 ```{r}
 grid_gbm <- expand.grid(
   n.trees = c(300, 500, 1000),
